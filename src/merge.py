@@ -23,11 +23,16 @@ def find_pairs(input_dir: Path) -> tuple[list[tuple[Path, Path]], list[str]]:
 
     for name, path in jpeg_files.items():
         stem = path.stem
-        ext = path.suffix
         if stem.endswith(" 1"):
             back_files[name] = path
         else:
             front_files[name] = path
+
+    # Build normalized lookup for backs: "stem 1" -> path (using lowercase extension)
+    back_lookup: dict[str, Path] = {}
+    for name, path in back_files.items():
+        normalized_key = f"{path.stem}{path.suffix.lower()}"
+        back_lookup[normalized_key] = path
 
     pairs: list[tuple[Path, Path]] = []
     errors: list[str] = []
@@ -35,22 +40,17 @@ def find_pairs(input_dir: Path) -> tuple[list[tuple[Path, Path]], list[str]]:
 
     for front_name, front_path in sorted(front_files.items()):
         stem = front_path.stem
-        ext = front_path.suffix
-        back_name = f"{stem} 1{ext}"
-
-        # Try exact match first, then case-insensitive extension
-        if back_name in back_files:
-            pairs.append((front_path, back_files[back_name]))
-            matched_backs.add(back_name)
+        ext_lower = front_path.suffix.lower()
+        # Try matching with same extension first, then alternate
+        for try_ext in [ext_lower] + [e for e in JPEG_EXTENSIONS if e != ext_lower]:
+            normalized_back_key = f"{stem} 1{try_ext}"
+            if normalized_back_key in back_lookup:
+                back_path = back_lookup[normalized_back_key]
+                pairs.append((front_path, back_path))
+                matched_backs.add(back_path.name)
+                break
         else:
-            # Try alternative extension case
-            alt_ext = ext.swapcase()
-            alt_back_name = f"{stem} 1{alt_ext}"
-            if alt_back_name in back_files:
-                pairs.append((front_path, back_files[alt_back_name]))
-                matched_backs.add(alt_back_name)
-            else:
-                errors.append(f"{front_name}: missing back scan")
+            errors.append(f"{front_name}: missing back scan")
 
     for back_name in sorted(back_files):
         if back_name not in matched_backs:

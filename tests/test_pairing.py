@@ -64,6 +64,18 @@ def test_find_pairs_handles_uppercase_extension(tmp_path):
     assert errors == []
 
 
+def test_find_pairs_handles_cross_extension_case(tmp_path):
+    front = tmp_path / "Person D  bidprentje 1950.jpg"
+    back = tmp_path / "Person D  bidprentje 1950 1.JPEG"
+    front.touch()
+    back.touch()
+
+    pairs, errors = find_pairs(tmp_path)
+
+    assert len(pairs) == 1
+    assert errors == []
+
+
 def test_find_pairs_empty_directory(tmp_path):
     pairs, errors = find_pairs(tmp_path)
 
