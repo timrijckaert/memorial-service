@@ -24,7 +24,7 @@ def _make_text_image(path: Path, text: str) -> Path:
 
 
 def test_extract_text_creates_output_file(tmp_path):
-    image_path = _make_text_image(tmp_path / "card.jpeg", "Hello World")
+    image_path = _make_text_image(tmp_path / "card.jpeg", "Goede Morgen")
     output_path = tmp_path / "card_front.txt"
 
     extract_text(image_path, output_path)
@@ -33,7 +33,7 @@ def test_extract_text_creates_output_file(tmp_path):
 
 
 def test_extract_text_produces_content(tmp_path):
-    image_path = _make_text_image(tmp_path / "card.jpeg", "Hello World")
+    image_path = _make_text_image(tmp_path / "card.jpeg", "Goede Morgen")
     output_path = tmp_path / "card_front.txt"
 
     extract_text(image_path, output_path)

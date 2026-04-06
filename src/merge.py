@@ -105,6 +105,7 @@ def main() -> None:
     script_dir = Path(__file__).resolve().parent.parent
     input_dir = script_dir / "input"
     output_dir = script_dir / "output"
+    text_dir = output_dir / "text"
 
     if not input_dir.exists():
         input_dir.mkdir()
@@ -118,9 +119,11 @@ def main() -> None:
         return
 
     output_dir.mkdir(exist_ok=True)
+    text_dir.mkdir(exist_ok=True)
 
     total = len(pairs)
     ok_count = 0
+    text_count = 0
     width = len(str(total))
 
     print(f"Found {len(pairs)} pair{'s' if len(pairs) != 1 else ''} in input/")
@@ -129,15 +132,34 @@ def main() -> None:
 
     for i, (front_path, back_path) in enumerate(pairs, 1):
         output_path = output_dir / front_path.name
+        pair_ok = True
+
+        # Stitch
         try:
             stitch_pair(front_path, back_path, output_path)
-            print(f"[{i:>{width}}/{total}] {front_path.name}  OK")
             ok_count += 1
         except Exception as e:
-            print(f"[{i:>{width}}/{total}] {front_path.name}  ERROR: {e}")
-            all_errors.append(f"{front_path.name}: {e}")
+            all_errors.append(f"{front_path.name} stitch: {e}")
+            pair_ok = False
 
-    print(f"\nDone: {ok_count} merged, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
+        # OCR
+        front_text_path = text_dir / f"{front_path.stem}_front.txt"
+        back_text_path = text_dir / f"{back_path.stem}_back.txt"
+        try:
+            extract_text(front_path, front_text_path)
+            extract_text(back_path, back_text_path)
+            text_count += 1
+        except Exception as e:
+            all_errors.append(f"{front_path.name} OCR: {e}")
+            pair_ok = False
+
+        # Progress
+        if pair_ok:
+            print(f"[{i:>{width}}/{total}] {front_path.name}  OK")
+        else:
+            print(f"[{i:>{width}}/{total}] {front_path.name}  ERROR")
+
+    print(f"\nDone: {ok_count} merged, {text_count} text extracted, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
 
     if all_errors:
         print(f"\nCould not process:")
