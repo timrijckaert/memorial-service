@@ -11,6 +11,13 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
+# Check Tesseract is available
+if ! command -v tesseract &>/dev/null; then
+    echo "Error: tesseract is required but not found."
+    echo "Install it with: brew install tesseract tesseract-lang"
+    exit 1
+fi
+
 # Create venv if it doesn't exist
 if [ ! -d "$VENV_DIR" ]; then
     echo "Setting up virtual environment..."
