@@ -1,6 +1,7 @@
 # src/merge.py
 from pathlib import Path
 from PIL import Image
+import pytesseract
 
 JPEG_EXTENSIONS = {".jpeg", ".jpg"}
 
@@ -87,6 +88,17 @@ def stitch_pair(front_path: Path, back_path: Path, output_path: Path) -> None:
     canvas.paste(front, (0, 0))
     canvas.paste(back, (front.width, 0))
     canvas.save(output_path, "JPEG", quality=85)
+
+
+def extract_text(image_path: Path, output_path: Path) -> None:
+    """Extract text from an image using Tesseract OCR and write to a text file.
+
+    Uses Dutch (nld) language model. Creates the output file even if no text
+    is detected. Raises on failure (caller handles).
+    """
+    image = Image.open(image_path)
+    text = pytesseract.image_to_string(image, lang="nld")
+    output_path.write_text(text.strip())
 
 
 def main() -> None:
