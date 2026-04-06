@@ -14,8 +14,18 @@ fi
 # Check Tesseract is available
 if ! command -v tesseract &>/dev/null; then
     echo "Error: tesseract is required but not found."
-    echo "Install it with: brew install tesseract tesseract-lang"
+    echo "Install it with: brew install tesseract"
     exit 1
+fi
+
+# Download Dutch language pack if missing
+TESSDATA_DIR="$(dirname "$(command -v tesseract)")/../share/tessdata"
+if [ ! -f "$TESSDATA_DIR/nld.traineddata" ]; then
+    echo "Downloading Dutch language pack for Tesseract..."
+    curl -sL -o "$TESSDATA_DIR/nld.traineddata" \
+        https://github.com/tesseract-ocr/tessdata_best/raw/main/nld.traineddata
+    echo "Dutch language pack installed."
+    echo ""
 fi
 
 # Create venv if it doesn't exist
