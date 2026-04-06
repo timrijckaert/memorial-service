@@ -231,8 +231,8 @@ def main() -> None:
         try:
             ollama.list()
             ollama_available = True
-        except Exception:
-            print("Warning: Ollama not reachable — skipping text interpretation")
+        except Exception as e:
+            print(f"Warning: Ollama not reachable ({e}) — skipping text interpretation")
 
     total = len(pairs)
     ok_count = 0
@@ -257,18 +257,20 @@ def main() -> None:
             pair_ok = False
 
         # OCR
+        ocr_ok = False
         front_text_path = text_dir / f"{front_path.stem}_front.txt"
         back_text_path = text_dir / f"{back_path.stem}_back.txt"
         try:
             extract_text(front_path, front_text_path)
             extract_text(back_path, back_text_path)
             text_count += 1
+            ocr_ok = True
         except Exception as e:
             all_errors.append(f"{front_path.name} OCR: {e}")
             pair_ok = False
 
         # LLM Interpretation
-        if ollama_available:
+        if ollama_available and ocr_ok:
             json_output_path = json_dir / f"{front_path.stem}.json"
             try:
                 interpret_text(front_text_path, back_text_path, json_output_path, prompt_template)
