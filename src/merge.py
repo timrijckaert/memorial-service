@@ -1,5 +1,4 @@
 # src/merge.py
-import sys
 from pathlib import Path
 from PIL import Image
 
@@ -108,18 +107,15 @@ def main() -> None:
 
     output_dir.mkdir(exist_ok=True)
 
-    total = len(pairs) + len(errors)
+    total = len(pairs)
     ok_count = 0
-    err_count = len(errors)
     width = len(str(total))
 
     print(f"Found {len(pairs)} pair{'s' if len(pairs) != 1 else ''} in input/")
 
-    # Print errors for unpaired files first in the sequence
-    for i, error in enumerate(errors, 1):
-        print(f"[{i:>{width}}/{total}] {error}  ERROR")
+    all_errors: list[str] = list(errors)
 
-    for i, (front_path, back_path) in enumerate(pairs, len(errors) + 1):
+    for i, (front_path, back_path) in enumerate(pairs, 1):
         output_path = output_dir / front_path.name
         try:
             stitch_pair(front_path, back_path, output_path)
@@ -127,12 +123,14 @@ def main() -> None:
             ok_count += 1
         except Exception as e:
             print(f"[{i:>{width}}/{total}] {front_path.name}  ERROR: {e}")
-            err_count += 1
+            all_errors.append(f"{front_path.name}: {e}")
 
-    print(f"\nDone: {ok_count} merged, {err_count} error{'s' if err_count != 1 else ''}")
+    print(f"\nDone: {ok_count} merged, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
 
-    if err_count > 0:
-        sys.exit(1)
+    if all_errors:
+        print(f"\nCould not process:")
+        for error in all_errors:
+            print(f"  - {error}")
 
 
 if __name__ == "__main__":
