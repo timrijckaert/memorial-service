@@ -28,6 +28,29 @@ if [ ! -f "$TESSDATA_DIR/nld.traineddata" ]; then
     echo ""
 fi
 
+# Check Ollama is available
+if ! command -v ollama &>/dev/null; then
+    echo "Error: ollama is required but not found."
+    echo "Install it with: brew install ollama"
+    exit 1
+fi
+
+# Check Ollama service is running
+if ! ollama list &>/dev/null; then
+    echo "Error: Ollama service is not running."
+    echo "Start it with: ollama serve"
+    echo "Or open the Ollama app."
+    exit 1
+fi
+
+# Pull Gemma 4 E2B model if not present
+if ! ollama list | grep -q "gemma4:e2b"; then
+    echo "Downloading Gemma 4 E2B model for text interpretation..."
+    ollama pull gemma4:e2b
+    echo "Model downloaded."
+    echo ""
+fi
+
 # Create venv if it doesn't exist
 if [ ! -d "$VENV_DIR" ]; then
     echo "Setting up virtual environment..."
