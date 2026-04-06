@@ -1,0 +1,57 @@
+# tests/test_stitching.py
+from pathlib import Path
+from PIL import Image
+from src.merge import stitch_pair
+
+
+def _make_image(path: Path, width: int, height: int, color: str) -> Path:
+    """Create a solid-color test image."""
+    img = Image.new("RGB", (width, height), color)
+    img.save(path, "JPEG")
+    return path
+
+
+def test_stitch_same_height(tmp_path):
+    front = _make_image(tmp_path / "front.jpeg", 100, 200, "red")
+    back = _make_image(tmp_path / "back.jpeg", 120, 200, "blue")
+    output = tmp_path / "output.jpeg"
+
+    stitch_pair(front, back, output)
+
+    result = Image.open(output)
+    assert result.size == (220, 200)
+
+
+def test_stitch_different_heights_scales_shorter(tmp_path):
+    front = _make_image(tmp_path / "front.jpeg", 100, 200, "red")
+    back = _make_image(tmp_path / "back.jpeg", 80, 100, "blue")
+    output = tmp_path / "output.jpeg"
+
+    stitch_pair(front, back, output)
+
+    result = Image.open(output)
+    # Back was 80x100, scaled to height 200 -> width becomes 160
+    assert result.size == (260, 200)
+
+
+def test_stitch_front_shorter_than_back(tmp_path):
+    front = _make_image(tmp_path / "front.jpeg", 100, 100, "red")
+    back = _make_image(tmp_path / "back.jpeg", 120, 200, "blue")
+    output = tmp_path / "output.jpeg"
+
+    stitch_pair(front, back, output)
+
+    result = Image.open(output)
+    # Front was 100x100, scaled to height 200 -> width becomes 200
+    assert result.size == (320, 200)
+
+
+def test_stitch_outputs_jpeg(tmp_path):
+    front = _make_image(tmp_path / "front.jpeg", 100, 200, "red")
+    back = _make_image(tmp_path / "back.jpeg", 100, 200, "blue")
+    output = tmp_path / "output.jpeg"
+
+    stitch_pair(front, back, output)
+
+    result = Image.open(output)
+    assert result.format == "JPEG"
