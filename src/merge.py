@@ -200,6 +200,8 @@ def main() -> None:
     input_dir = script_dir / "input"
     output_dir = script_dir / "output"
     text_dir = output_dir / "text"
+    json_dir = output_dir / "json"
+    prompt_path = script_dir / "prompts" / "extract_person.txt"
 
     if not input_dir.exists():
         input_dir.mkdir()
@@ -214,10 +216,28 @@ def main() -> None:
 
     output_dir.mkdir(exist_ok=True)
     text_dir.mkdir(exist_ok=True)
+    json_dir.mkdir(exist_ok=True)
+
+    # Load prompt template
+    prompt_template = None
+    if prompt_path.exists():
+        prompt_template = prompt_path.read_text()
+    else:
+        print(f"Warning: prompt template not found at {prompt_path} — skipping interpretation")
+
+    # Pre-flight check: is Ollama reachable?
+    ollama_available = False
+    if prompt_template:
+        try:
+            ollama.list()
+            ollama_available = True
+        except Exception:
+            print("Warning: Ollama not reachable — skipping text interpretation")
 
     total = len(pairs)
     ok_count = 0
     text_count = 0
+    interpret_count = 0
     width = len(str(total))
 
     print(f"Found {len(pairs)} pair{'s' if len(pairs) != 1 else ''} in input/")
@@ -247,13 +267,23 @@ def main() -> None:
             all_errors.append(f"{front_path.name} OCR: {e}")
             pair_ok = False
 
+        # LLM Interpretation
+        if ollama_available:
+            json_output_path = json_dir / f"{front_path.stem}.json"
+            try:
+                interpret_text(front_text_path, back_text_path, json_output_path, prompt_template)
+                interpret_count += 1
+            except Exception as e:
+                all_errors.append(f"{front_path.name} interpret: {e}")
+                pair_ok = False
+
         # Progress
         if pair_ok:
             print(f"[{i:>{width}}/{total}] {front_path.name}  OK")
         else:
             print(f"[{i:>{width}}/{total}] {front_path.name}  ERROR")
 
-    print(f"\nDone: {ok_count} merged, {text_count} text extracted, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
+    print(f"\nDone: {ok_count} merged, {text_count} text extracted, {interpret_count} interpreted, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
 
     if all_errors:
         print(f"\nCould not process:")
