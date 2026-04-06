@@ -1,4 +1,5 @@
 # src/merge.py
+import sys
 from pathlib import Path
 from PIL import Image
 
@@ -87,3 +88,52 @@ def stitch_pair(front_path: Path, back_path: Path, output_path: Path) -> None:
     canvas.paste(front, (0, 0))
     canvas.paste(back, (front.width, 0))
     canvas.save(output_path, "JPEG", quality=85)
+
+
+def main() -> None:
+    script_dir = Path(__file__).resolve().parent.parent
+    input_dir = script_dir / "input"
+    output_dir = script_dir / "output"
+
+    if not input_dir.exists():
+        input_dir.mkdir()
+        print(f"Created {input_dir}/ — drop your scans there and run again.")
+        return
+
+    pairs, errors = find_pairs(input_dir)
+
+    if not pairs and not errors:
+        print("No scans found in input/. Drop front + back JPEG pairs there and run again.")
+        return
+
+    output_dir.mkdir(exist_ok=True)
+
+    total = len(pairs) + len(errors)
+    ok_count = 0
+    err_count = len(errors)
+    width = len(str(total))
+
+    print(f"Found {len(pairs)} pair{'s' if len(pairs) != 1 else ''} in input/")
+
+    # Print errors for unpaired files first in the sequence
+    for i, error in enumerate(errors, 1):
+        print(f"[{i:>{width}}/{total}] {error}  ERROR")
+
+    for i, (front_path, back_path) in enumerate(pairs, len(errors) + 1):
+        output_path = output_dir / front_path.name
+        try:
+            stitch_pair(front_path, back_path, output_path)
+            print(f"[{i:>{width}}/{total}] {front_path.name}  OK")
+            ok_count += 1
+        except Exception as e:
+            print(f"[{i:>{width}}/{total}] {front_path.name}  ERROR: {e}")
+            err_count += 1
+
+    print(f"\nDone: {ok_count} merged, {err_count} error{'s' if err_count != 1 else ''}")
+
+    if err_count > 0:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
