@@ -124,6 +124,32 @@ def extract_text(image_path: Path, output_path: Path) -> None:
     output_path.write_text(_clean_ocr_text(raw))
 
 
+DUTCH_MONTHS = {
+    "januari": "01", "februari": "02", "maart": "03", "april": "04",
+    "mei": "05", "juni": "06", "juli": "07", "augustus": "08",
+    "september": "09", "oktober": "10", "november": "11", "december": "12",
+}
+
+_FILENAME_DATE_RE = re.compile(
+    r"bidprentje\s+(\d{1,2})\s+("
+    + "|".join(DUTCH_MONTHS)
+    + r")\s+(\d{4})",
+    re.IGNORECASE,
+)
+
+
+def extract_filename_death_date(filename: str) -> str | None:
+    """Extract the death date from a filename like '... bidprentje 27 februari 1941.jpeg'.
+
+    Returns ISO date string (YYYY-MM-DD) or None if not parseable.
+    """
+    m = _FILENAME_DATE_RE.search(filename)
+    if not m:
+        return None
+    day, month_name, year = m.group(1), m.group(2).lower(), m.group(3)
+    return f"{year}-{DUTCH_MONTHS[month_name]}-{int(day):02d}"
+
+
 PERSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -171,8 +197,8 @@ def interpret_text(
     """Interpret OCR text using a local LLM and write structured JSON.
 
     Reads front and back text files, substitutes them into the prompt template,
-    sends to Ollama (Gemma 4 E2B) with a structured output schema, and writes
-    the parsed JSON to output_path. Raises on failure (caller handles).
+    sends to Ollama with a structured output schema, and writes the parsed JSON
+    to output_path. Raises on failure (caller handles).
     """
     front_text = front_text_path.read_text() if front_text_path.exists() else ""
     back_text = back_text_path.read_text() if back_text_path.exists() else ""
