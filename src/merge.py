@@ -184,7 +184,11 @@ def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None =
             )
             llm_year = resp.message.content.strip().rstrip(",.")
 
-            if _YEAR_RE.match(llm_year) and llm_year != entry["ocr_year"]:
+            if (
+                _YEAR_RE.match(llm_year)
+                and llm_year != entry["ocr_year"]
+                and 1800 <= int(llm_year) <= 1950
+            ):
                 text = text.replace(entry["ocr_year"], llm_year, 1)
                 corrections.append(f"{entry['ocr_year']} -> {llm_year}")
 

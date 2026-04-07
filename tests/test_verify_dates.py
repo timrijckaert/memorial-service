@@ -104,6 +104,30 @@ def test_verify_dates_no_correction_when_matching(mock_chat, mock_data, tmp_path
 
 
 @patch("src.merge.pytesseract.image_to_data")
+@patch("src.merge.ollama.chat")
+def test_verify_dates_rejects_llm_year_outside_range(mock_chat, mock_data, tmp_path):
+    """When LLM returns a year outside 1800-1950, the OCR value is kept."""
+    image_path = _make_image_with_text(tmp_path, "overleden 1926")
+    text_path = tmp_path / "card_back.txt"
+    text_path.write_text("overleden 1926")
+
+    mock_data.return_value = {
+        "text": ["overleden", "1926"],
+        "left": [10, 120],
+        "top": [40, 40],
+        "width": [100, 50],
+        "height": [20, 20],
+        "conf": [95, 86],
+    }
+    mock_chat.return_value = _mock_chat_response("2026")
+
+    corrections = verify_dates(image_path, text_path)
+
+    assert corrections == []
+    assert text_path.read_text() == "overleden 1926"
+
+
+@patch("src.merge.pytesseract.image_to_data")
 def test_verify_dates_no_years_skips_llm(mock_data, tmp_path):
     """When no year-like words are found, no LLM calls are made."""
     image_path = _make_image_with_text(tmp_path, "no dates here")

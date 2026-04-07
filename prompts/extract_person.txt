@@ -5,7 +5,8 @@ The text was extracted via OCR and may contain errors.
 IMPORTANT RULES:
 - Both front and back text are provided. Check BOTH for information — names can appear on either side.
 - Return dates in ISO 8601 format (YYYY-MM-DD).
-- OCR often misreads digits (e.g. 4 vs 1, 8 vs 3, 0 vs 6). Two OCR passes are provided: a full text pass and a digits-focused pass. When dates differ between passes, prefer the digits-focused pass and note the discrepancy.
+- All dates must fall in the range 1800–1950. Any year outside this range is likely an OCR error.
+- OCR often misreads digits (e.g. 4 vs 1, 8 vs 3, 0 vs 6). Cross-check dates against context: if the text says someone died at a certain age, verify the dates are arithmetically consistent.
 - If a birth date is not explicitly stated but death date and age at death are given, deduce the approximate birth date and note this in the notes array.
 - Normalize place names to their modern Dutch spelling using the known places list below.
 - Add a note whenever you deduce a value, correct an OCR error, or are uncertain about an extraction.
