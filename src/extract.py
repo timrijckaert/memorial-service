@@ -1,5 +1,4 @@
 # src/extract.py
-import concurrent.futures
 import json
 import os
 import re
@@ -125,6 +124,7 @@ def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None =
                     "images": [str(crop_path)],
                 }],
                 options={"temperature": 0, "num_predict": 16},
+                keep_alive="30m",
             )
             llm_year = resp.message.content.strip().rstrip(",.")
 
@@ -155,26 +155,31 @@ def interpret_text(
     front_text_path: Path,
     back_text_path: Path,
     output_path: Path,
-    prompt_template: str,
+    system_prompt: str,
+    user_template: str,
 ) -> None:
     """Interpret OCR text using a local LLM and write structured JSON.
 
-    Reads front and back text files, substitutes them into the prompt template,
-    sends to Ollama with a structured output schema, and writes the parsed JSON
-    to output_path. Raises on failure (caller handles).
+    Sends the static system prompt and card-specific user message as separate
+    messages to Ollama, enabling KV cache reuse on the system prefix.
+    Writes the parsed JSON to output_path. Raises on failure (caller handles).
     """
     front_text = front_text_path.read_text() if front_text_path.exists() else ""
     back_text = back_text_path.read_text() if back_text_path.exists() else ""
 
-    prompt = prompt_template.replace("{front_text}", front_text).replace(
+    user_message = user_template.replace("{front_text}", front_text).replace(
         "{back_text}", back_text
     )
 
     response = ollama.chat(
         model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
         format=PERSON_SCHEMA,
         options={"temperature": 0, "num_predict": 2048},
+        keep_alive="30m",
     )
 
     try:
@@ -199,7 +204,8 @@ def _extract_one(
     json_dir: Path,
     conflicts_dir: Path,
     ollama_available: bool,
-    prompt_template: str | None,
+    system_prompt: str | None,
+    user_template: str | None,
     on_step=None,
 ) -> dict:
     """Process extraction for a single pair: OCR, date verification, LLM interpretation.
@@ -256,7 +262,7 @@ def _extract_one(
             on_step("llm_extract")
         json_output_path = json_dir / f"{front_path.stem}.json"
         try:
-            interpret_text(front_text_path, back_text_path, json_output_path, prompt_template)
+            interpret_text(front_text_path, back_text_path, json_output_path, system_prompt, user_template)
             result["interpreted"] = True
         except Exception as e:
             result["errors"].append(f"{front_path.name} interpret: {e}")
@@ -269,7 +275,8 @@ def extract_all(
     text_dir: Path,
     json_dir: Path,
     conflicts_dir: Path,
-    prompt_template: str | None,
+    system_prompt: str | None,
+    user_template: str | None,
     ollama_available: bool,
     force: bool = False,
 ) -> tuple[int, int, int, int, int, list[str]]:
@@ -294,34 +301,26 @@ def extract_all(
     if skipped:
         print(f"Skipping {skipped} already extracted")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {
-            pool.submit(
-                _extract_one, front_path, back_path,
-                text_dir, json_dir, conflicts_dir,
-                ollama_available, prompt_template,
-            ): front_path.name
-            for front_path, back_path in to_process
-        }
+    for idx, (front_path, back_path) in enumerate(to_process, 1):
+        result = _extract_one(
+            front_path, back_path,
+            text_dir, json_dir, conflicts_dir,
+            ollama_available, system_prompt, user_template,
+        )
 
-        completed = 0
-        for future in concurrent.futures.as_completed(futures):
-            completed += 1
-            result = future.result()
+        for fix in result["date_fixes"]:
+            print(f"        {fix}")
 
-            for fix in result["date_fixes"]:
-                print(f"        {fix}")
+        pair_ok = not result["errors"]
+        name = result["front_name"]
+        if pair_ok:
+            print(f"  [{idx:>{width}}/{total}] {name}  OK")
+        else:
+            print(f"  [{idx:>{width}}/{total}] {name}  ERROR")
 
-            pair_ok = not result["errors"]
-            name = result["front_name"]
-            if pair_ok:
-                print(f"  [{completed:>{width}}/{total}] {name}  OK")
-            else:
-                print(f"  [{completed:>{width}}/{total}] {name}  ERROR")
-
-            text_count += result["ocr"]
-            verify_count += result["verify_corrections"]
-            interpret_count += result["interpreted"]
-            all_errors.extend(result["errors"])
+        text_count += result["ocr"]
+        verify_count += result["verify_corrections"]
+        interpret_count += result["interpreted"]
+        all_errors.extend(result["errors"])
 
     return text_count, verify_count, interpret_count, skipped, total, all_errors
