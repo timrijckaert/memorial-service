@@ -196,63 +196,13 @@ def test_output_images_path_traversal_returns_403(tmp_path):
         server.shutdown()
 
 
-def test_api_merge_pairs_returns_detected_pairs(tmp_path):
-    json_dir = tmp_path / "json"
-    json_dir.mkdir()
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
-    output_dir = tmp_path / "output"
-    output_dir.mkdir()
-
-    # Create a valid pair
-    (input_dir / "De Smet Maria.jpeg").write_bytes(b"\xff\xd8front")
-    (input_dir / "De Smet Maria 1.jpeg").write_bytes(b"\xff\xd8back")
-    # Create an orphan (no back)
-    (input_dir / "Orphan Jan.jpeg").write_bytes(b"\xff\xd8front")
-
-    server, base = _start_test_server(json_dir, input_dir, output_dir)
-    try:
-        resp = urlopen(f"{base}/api/merge/pairs")
-        data = json.loads(resp.read())
-        assert len(data["pairs"]) == 1
-        assert data["pairs"][0]["name"] == "De Smet Maria"
-        assert data["pairs"][0]["front"] == "De Smet Maria.jpeg"
-        assert data["pairs"][0]["back"] == "De Smet Maria 1.jpeg"
-        assert len(data["errors"]) == 1
-        assert "Orphan Jan" in data["errors"][0]
-    finally:
-        server.shutdown()
-
-
-def test_api_merge_pairs_shows_already_merged(tmp_path):
-    json_dir = tmp_path / "json"
-    json_dir.mkdir()
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
-    output_dir = tmp_path / "output"
-    output_dir.mkdir()
-
-    (input_dir / "Card A.jpeg").write_bytes(b"\xff\xd8front")
-    (input_dir / "Card A 1.jpeg").write_bytes(b"\xff\xd8back")
-    # Already merged
-    (output_dir / "Card A.jpeg").write_bytes(b"\xff\xd8merged")
-
-    server, base = _start_test_server(json_dir, input_dir, output_dir)
-    try:
-        resp = urlopen(f"{base}/api/merge/pairs")
-        data = json.loads(resp.read())
-        assert data["pairs"][0]["merged"] is True
-    finally:
-        server.shutdown()
-
-
 def _create_test_image(path, width=100, height=100, color="red"):
     """Create a small JPEG image for testing."""
     img = Image.new("RGB", (width, height), color)
     img.save(path, "JPEG")
 
 
-def test_api_merge_triggers_stitching(tmp_path):
+def test_api_match_scan_returns_pairs(tmp_path):
     json_dir = tmp_path / "json"
     json_dir.mkdir()
     input_dir = tmp_path / "input"
@@ -265,18 +215,90 @@ def test_api_merge_triggers_stitching(tmp_path):
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
-        req = Request(f"{base}/api/merge", data=b"{}", method="POST",
+        resp = urlopen(f"{base}/api/match/scan")
+        data = json.loads(resp.read())
+        assert len(data["pairs"]) == 1
+        assert data["pairs"][0]["image_a"]["filename"] == "Card A.jpeg"
+        assert data["pairs"][0]["image_b"]["filename"] == "Card A 1.jpeg"
+        assert data["pairs"][0]["status"] == "auto_confirmed"
+    finally:
+        server.shutdown()
+
+
+def test_api_match_state_returns_snapshot(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        urlopen(f"{base}/api/match/scan")
+        resp = urlopen(f"{base}/api/match/state")
+        data = json.loads(resp.read())
+        assert "pairs" in data
+        assert "unmatched" in data
+        assert "confirmed_count" in data
+        assert data["confirmed_count"] == 1
+    finally:
+        server.shutdown()
+
+
+def test_api_match_confirm_all_confirms_suggested_pairs(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        # Scan first, then confirm all
+        urlopen(f"{base}/api/match/scan")
+        req = Request(f"{base}/api/match/confirm-all", data=b"{}", method="POST",
                       headers={"Content-Type": "application/json"})
         resp = urlopen(req)
         data = json.loads(resp.read())
-        assert data["ok"] == 1
-        assert data["errors"] == []
+        assert data["status"] == "confirmed"
+    finally:
+        server.shutdown()
+
+
+def test_api_match_confirm_triggers_stitching(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        urlopen(f"{base}/api/match/scan")
+        body = json.dumps({"image_a": "Card A.jpeg", "image_b": "Card A 1.jpeg"}).encode()
+        req = Request(f"{base}/api/match/confirm", data=body, method="POST",
+                      headers={"Content-Type": "application/json"})
+        resp = urlopen(req)
+        data = json.loads(resp.read())
+        assert data["status"] == "confirmed"
         assert (output_dir / "Card A.jpeg").exists()
     finally:
         server.shutdown()
 
 
-def test_api_merge_skips_already_merged(tmp_path):
+def test_api_match_unmatch_returns_to_unmatched(tmp_path):
     json_dir = tmp_path / "json"
     json_dir.mkdir()
     input_dir = tmp_path / "input"
@@ -286,41 +308,21 @@ def test_api_merge_skips_already_merged(tmp_path):
 
     _create_test_image(input_dir / "Card A.jpeg", color="red")
     _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
-    # Pre-existing merged file
-    _create_test_image(output_dir / "Card A.jpeg", color="green")
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
-        req = Request(f"{base}/api/merge", data=b"{}", method="POST",
+        urlopen(f"{base}/api/match/scan")
+        body = json.dumps({"image_a": "Card A.jpeg", "image_b": "Card A 1.jpeg"}).encode()
+        req = Request(f"{base}/api/match/unmatch", data=body, method="POST",
                       headers={"Content-Type": "application/json"})
         resp = urlopen(req)
         data = json.loads(resp.read())
-        assert data["ok"] == 0
-        assert data["skipped"] == 1
-    finally:
-        server.shutdown()
+        assert data["status"] == "unmatched"
 
-
-def test_api_merge_with_force_reprocesses(tmp_path):
-    json_dir = tmp_path / "json"
-    json_dir.mkdir()
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
-    output_dir = tmp_path / "output"
-    output_dir.mkdir()
-
-    _create_test_image(input_dir / "Card A.jpeg", color="red")
-    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
-    _create_test_image(output_dir / "Card A.jpeg", color="green")
-
-    server, base = _start_test_server(json_dir, input_dir, output_dir)
-    try:
-        req = Request(f"{base}/api/merge", data=json.dumps({"force": True}).encode(),
-                      method="POST", headers={"Content-Type": "application/json"})
-        resp = urlopen(req)
-        data = json.loads(resp.read())
-        assert data["ok"] == 1
-        assert data["skipped"] == 0
+        state_resp = urlopen(f"{base}/api/match/state")
+        state = json.loads(state_resp.read())
+        assert len(state["unmatched"]) == 2
+        assert len(state["pairs"]) == 0
     finally:
         server.shutdown()
 
@@ -359,6 +361,9 @@ def test_api_extract_starts_and_completes(tmp_path):
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
+        # Scan to populate match state (auto-confirms the pair)
+        urlopen(f"{base}/api/match/scan")
+
         with patch("src.web.worker.extract_text"), \
              patch("src.web.worker.verify_dates", return_value=[]), \
              patch("src.web.worker.interpret_text"):
@@ -448,6 +453,8 @@ def test_api_extract_skips_already_extracted(tmp_path):
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
+        # Scan to populate match state (auto-confirms the pair)
+        urlopen(f"{base}/api/match/scan")
         resp = urlopen(f"{base}/api/extract/cards")
         data = json.loads(resp.read())
         assert len(data["cards"]) == 1
@@ -471,6 +478,8 @@ def test_api_extract_cards_lists_eligible(tmp_path):
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
+        # Scan to populate match state (auto-confirms the pair)
+        urlopen(f"{base}/api/match/scan")
         resp = urlopen(f"{base}/api/extract/cards")
         data = json.loads(resp.read())
         assert len(data["cards"]) == 1

@@ -8,7 +8,8 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from src.extraction import make_backend
-from src.images import find_pairs, merge_all
+from src.images.stitching import stitch_pair
+from src.web.match_state import MatchState
 from src.review import list_cards, load_card, save_card
 from src.web.worker import ExtractionWorker
 
@@ -75,25 +76,15 @@ class AppHandler(BaseHTTPRequestHandler):
         elif self.path.startswith("/output-images/"):
             filename = unquote(self.path[len("/output-images/"):])
             self._serve_file(output_dir, filename)
-        elif self.path == "/api/merge/pairs":
-            pairs, errors = find_pairs(input_dir)
-            result = {
-                "pairs": [
-                    {
-                        "name": front.stem,
-                        "front": front.name,
-                        "back": back.name,
-                        "merged": (output_dir / front.name).exists(),
-                    }
-                    for front, back in pairs
-                ],
-                "errors": errors,
-            }
+        elif self.path == "/api/match/scan":
+            result = self.server.match_state.scan()
             self._send_json(result)
+        elif self.path == "/api/match/state":
+            self._send_json(self.server.match_state.get_snapshot())
         elif self.path == "/api/extract/status":
             self._send_json(self.server.worker.get_status().to_dict())
         elif self.path == "/api/extract/cards":
-            pairs, _ = find_pairs(input_dir)
+            pairs, singles = self.server.match_state.get_confirmed_items()
             cards = []
             for front, back in pairs:
                 has_json = (json_dir / f"{front.stem}.json").exists()
@@ -101,6 +92,14 @@ class AppHandler(BaseHTTPRequestHandler):
                     "name": front.stem,
                     "front": front.name,
                     "back": back.name,
+                    "status": "done" if has_json else "pending",
+                })
+            for single in singles:
+                has_json = (json_dir / f"{single.stem}.json").exists()
+                cards.append({
+                    "name": single.stem,
+                    "front": single.name,
+                    "back": None,
                     "status": "done" if has_json else "pending",
                 })
             self._send_json({"cards": cards})
@@ -135,22 +134,39 @@ class AppHandler(BaseHTTPRequestHandler):
         output_dir = self.server.output_dir
         json_dir = self.server.json_dir
 
-        if self.path == "/api/merge":
+        if self.path == "/api/match/confirm":
             content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length) if content_length else b"{}"
-            try:
-                options = json.loads(body)
-            except json.JSONDecodeError:
-                options = {}
-
-            force = options.get("force", False)
-            pairs, pairing_errors = find_pairs(input_dir)
-            ok_count, skipped, merge_errors = merge_all(pairs, output_dir, force=force)
-            self._send_json({
-                "ok": ok_count,
-                "skipped": skipped,
-                "errors": pairing_errors + merge_errors,
-            })
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            result = self.server.match_state.confirm(data["image_a"], data["image_b"])
+            self._send_json(result)
+        elif self.path == "/api/match/confirm-all":
+            result = self.server.match_state.confirm_all()
+            self._send_json(result)
+        elif self.path == "/api/match/unmatch":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            result = self.server.match_state.unmatch(data["image_a"], data["image_b"])
+            self._send_json(result)
+        elif self.path == "/api/match/pair":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            result = self.server.match_state.manual_pair(data["image_a"], data["image_b"])
+            self._send_json(result)
+        elif self.path == "/api/match/single":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            result = self.server.match_state.mark_single(data["filename"])
+            self._send_json(result)
+        elif self.path == "/api/match/scores":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            result = self.server.match_state.get_scores_for(data["filename"])
+            self._send_json(result)
         elif self.path == "/api/extract":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length) if content_length else b"{}"
@@ -160,7 +176,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 options = {}
 
             cards_filter = options.get("cards", None)
-            pairs, _ = find_pairs(input_dir)
+            pairs, _singles = self.server.match_state.get_confirmed_items()
             if cards_filter:
                 card_set = set(cards_filter)
                 pairs = [(f, b) for f, b in pairs if f.stem in card_set]
@@ -205,6 +221,7 @@ def make_server(
     server.input_dir = input_dir
     server.output_dir = output_dir
     server.worker = ExtractionWorker()
+    server.match_state = MatchState(input_dir, output_dir)
     config_path = input_dir.parent / "config.json"
     server.backend = make_backend(config_path)
     return server
