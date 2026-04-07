@@ -1,15 +1,15 @@
 # src/extract.py
 import json
-import os
 import re
 from pathlib import Path
 from PIL import Image
-import ollama
+from google import genai
+from google.genai import types
 import pytesseract
 
 _YEAR_RE = re.compile(r"^\d{4}$")
 
-MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
+GEMINI_MODEL = "gemini-2.0-flash"
 
 PERSON_SCHEMA = {
     "type": "object",
@@ -17,13 +17,13 @@ PERSON_SCHEMA = {
         "person": {
             "type": "object",
             "properties": {
-                "first_name": {"type": ["string", "null"]},
-                "last_name": {"type": ["string", "null"]},
-                "birth_date": {"type": ["string", "null"]},
-                "birth_place": {"type": ["string", "null"]},
-                "death_date": {"type": ["string", "null"]},
-                "death_place": {"type": ["string", "null"]},
-                "age_at_death": {"type": ["integer", "null"]},
+                "first_name": {"type": "string", "nullable": True},
+                "last_name": {"type": "string", "nullable": True},
+                "birth_date": {"type": "string", "nullable": True},
+                "birth_place": {"type": "string", "nullable": True},
+                "death_date": {"type": "string", "nullable": True},
+                "death_place": {"type": "string", "nullable": True},
+                "age_at_death": {"type": "integer", "nullable": True},
                 "spouses": {"type": "array", "items": {"type": "string"}},
             },
             "required": [
@@ -38,6 +38,12 @@ PERSON_SCHEMA = {
     },
     "required": ["person", "notes"],
 }
+
+
+def _make_gemini_client(config_path: Path) -> genai.Client:
+    """Create a Gemini client from the config file."""
+    config = json.loads(config_path.read_text())
+    return genai.Client(api_key=config["gemini_api_key"])
 
 
 def _clean_ocr_text(raw: str) -> str:
@@ -70,12 +76,12 @@ def extract_text(image_path: Path, output_path: Path) -> None:
     output_path.write_text(_clean_ocr_text(raw))
 
 
-def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None = None) -> list[str]:
-    """Verify year digits in OCR text by cropping them from the image and asking the LLM.
+def verify_dates(image_path: Path, text_path: Path, client: genai.Client, conflicts_dir: Path | None = None) -> list[str]:
+    """Verify year digits in OCR text by cropping them from the image and asking Gemini.
 
     Uses Tesseract's bounding-box data to locate year-like words (4 digits),
-    crops each region, and sends the crop to the LLM for visual verification.
-    If the LLM reads a different year, the text file is updated in place and
+    crops each region, and sends the crop to Gemini for visual verification.
+    If Gemini reads a different year, the text file is updated in place and
     the crop image is saved to conflicts_dir for manual review.
 
     Returns a list of corrections made (empty if all years match).
@@ -83,7 +89,6 @@ def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None =
     image = Image.open(image_path)
     data = pytesseract.image_to_data(image, lang="nld", output_type=pytesseract.Output.DICT)
 
-    # Collect year words and their bounding boxes
     years: list[dict] = []
     for i, word in enumerate(data["text"]):
         clean_word = word.strip().rstrip(",.")
@@ -111,39 +116,32 @@ def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None =
             entry["top"] + entry["height"] + pad,
         ))
 
-        # Save crop to a temporary file for the LLM (include stem for thread safety)
-        crop_path = text_path.parent / f"_crop_{text_path.stem}_{entry['ocr_year']}.png"
-        crop.save(crop_path)
+        resp = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                "Read the number in this image. Reply with ONLY the 4-digit year number, nothing else.",
+                crop,
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0,
+                max_output_tokens=16,
+            ),
+        )
+        llm_year = resp.text.strip().rstrip(",.")
 
-        try:
-            resp = ollama.chat(
-                model=MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": "Read the number in this image. Reply with ONLY the 4-digit year number, nothing else.",
-                    "images": [str(crop_path)],
-                }],
-                options={"temperature": 0, "num_predict": 16},
-                keep_alive="30m",
-            )
-            llm_year = resp.message.content.strip().rstrip(",.")
+        if (
+            _YEAR_RE.match(llm_year)
+            and llm_year != entry["ocr_year"]
+            and 1800 <= int(llm_year) <= 1950
+        ):
+            text = text.replace(entry["ocr_year"], llm_year, 1)
+            corrections.append(f"{entry['ocr_year']} -> {llm_year}")
 
-            if (
-                _YEAR_RE.match(llm_year)
-                and llm_year != entry["ocr_year"]
-                and 1800 <= int(llm_year) <= 1950
-            ):
-                text = text.replace(entry["ocr_year"], llm_year, 1)
-                corrections.append(f"{entry['ocr_year']} -> {llm_year}")
-
-                # Save the crop for manual review
-                if conflicts_dir:
-                    conflicts_dir.mkdir(exist_ok=True)
-                    stem = image_path.stem
-                    conflict_path = conflicts_dir / f"{stem}_ocr{entry['ocr_year']}_llm{llm_year}.png"
-                    crop.save(conflict_path)
-        finally:
-            crop_path.unlink(missing_ok=True)
+            if conflicts_dir:
+                conflicts_dir.mkdir(exist_ok=True)
+                stem = image_path.stem
+                conflict_path = conflicts_dir / f"{stem}_ocr{entry['ocr_year']}_llm{llm_year}.png"
+                crop.save(conflict_path)
 
     if corrections:
         text_path.write_text(text)
@@ -157,12 +155,13 @@ def interpret_text(
     output_path: Path,
     system_prompt: str,
     user_template: str,
+    client: genai.Client,
 ) -> None:
-    """Interpret OCR text using a local LLM and write structured JSON.
+    """Interpret OCR text using Gemini and write structured JSON.
 
-    Sends the static system prompt and card-specific user message as separate
-    messages to Ollama, enabling KV cache reuse on the system prefix.
-    Writes the parsed JSON to output_path. Raises on failure (caller handles).
+    Sends the static system prompt and card-specific user message to Gemini
+    with structured JSON output. Writes the parsed JSON to output_path.
+    Raises on failure (caller handles).
     """
     front_text = front_text_path.read_text() if front_text_path.exists() else ""
     back_text = back_text_path.read_text() if back_text_path.exists() else ""
@@ -171,22 +170,23 @@ def interpret_text(
         "{back_text}", back_text
     )
 
-    response = ollama.chat(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        format=PERSON_SCHEMA,
-        options={"temperature": 0, "num_predict": 2048},
-        keep_alive="30m",
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=user_message,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            temperature=0,
+            max_output_tokens=2048,
+            response_mime_type="application/json",
+            response_json_schema=PERSON_SCHEMA,
+        ),
     )
 
     try:
-        result = json.loads(response.message.content)
+        result = json.loads(response.text)
     except json.JSONDecodeError as e:
         raise ValueError(
-            f"LLM returned invalid JSON: {response.message.content[:200]}"
+            f"LLM returned invalid JSON: {response.text[:200]}"
         ) from e
 
     result["source"] = {
@@ -203,7 +203,7 @@ def _extract_one(
     text_dir: Path,
     json_dir: Path,
     conflicts_dir: Path,
-    ollama_available: bool,
+    client: genai.Client | None,
     system_prompt: str | None,
     user_template: str | None,
     on_step=None,
@@ -244,12 +244,12 @@ def _extract_one(
         return result
 
     # Date verification (LLM visual cross-check)
-    if ollama_available:
+    if client:
         if on_step:
             on_step("date_verify")
         try:
             for txt_path, img_path in [(front_text_path, front_path), (back_text_path, back_path)]:
-                corrections = verify_dates(img_path, txt_path, conflicts_dir)
+                corrections = verify_dates(img_path, txt_path, client, conflicts_dir)
                 for c in corrections:
                     result["verify_corrections"] += 1
                     result["date_fixes"].append(f"date fix ({img_path.name}): {c}")
@@ -257,12 +257,12 @@ def _extract_one(
             result["errors"].append(f"{front_path.name} date verify: {e}")
 
     # LLM Interpretation
-    if ollama_available:
+    if client:
         if on_step:
             on_step("llm_extract")
         json_output_path = json_dir / f"{front_path.stem}.json"
         try:
-            interpret_text(front_text_path, back_text_path, json_output_path, system_prompt, user_template)
+            interpret_text(front_text_path, back_text_path, json_output_path, system_prompt, user_template, client)
             result["interpreted"] = True
         except Exception as e:
             result["errors"].append(f"{front_path.name} interpret: {e}")
@@ -277,7 +277,7 @@ def extract_all(
     conflicts_dir: Path,
     system_prompt: str | None,
     user_template: str | None,
-    ollama_available: bool,
+    client: genai.Client | None,
     force: bool = False,
 ) -> tuple[int, int, int, int, int, list[str]]:
     """Run extraction on all pairs. Returns (text_count, verify_count, interpret_count, skipped, processed, errors)."""
@@ -305,7 +305,7 @@ def extract_all(
         result = _extract_one(
             front_path, back_path,
             text_dir, json_dir, conflicts_dir,
-            ollama_available, system_prompt, user_template,
+            client, system_prompt, user_template,
         )
 
         for fix in result["date_fixes"]:
