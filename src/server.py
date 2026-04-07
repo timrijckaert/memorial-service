@@ -43,8 +43,8 @@ APP_HTML = """\
   .pair-card { background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #ddd; }
   .pair-card.error { border-color: #e74c3c; border-style: dashed; }
   .pair-card.merged { border-color: #27ae60; }
-  .pair-images { display: flex; height: 150px; background: #f0f0f0; }
-  .pair-images img { flex: 1; object-fit: cover; max-width: 50%; }
+  .pair-images { display: flex; aspect-ratio: 4/3; background: #f0f0f0; }
+  .pair-images img { flex: 1; object-fit: contain; max-width: 50%; }
   .pair-images .merged-img { max-width: 100%; }
   .pair-images .placeholder { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px; background: #e8e8e8; }
   .pair-images .placeholder.missing { background: #fde8e8; color: #e74c3c; }
@@ -150,8 +150,9 @@ APP_HTML = """\
 <!-- Extract Section -->
 <div id="section-extract" class="section extract-section">
   <div class="extract-controls">
-    <button id="extract-btn" class="btn btn-primary" onclick="triggerExtract()">Extract All</button>
+    <button id="extract-btn" class="btn btn-primary" onclick="triggerExtractSelected()">Extract Selected</button>
     <button id="cancel-btn" class="btn btn-danger" onclick="cancelExtract()" style="display:none;">Cancel</button>
+    <label style="cursor:pointer;"><input type="checkbox" id="select-all-extract" onchange="toggleSelectAll(this.checked)"> Select all</label>
     <label><input type="checkbox" id="force-extract"> Force re-extract</label>
     <span id="extract-count" style="color:#888; font-size:14px;"></span>
   </div>
@@ -339,6 +340,7 @@ async function loadExtractCards() {
   countEl.textContent = data.cards.length + ' card' + (data.cards.length !== 1 ? 's' : '') + ' (' + done + ' done, ' + pending + ' pending)';
 
   renderExtractList(data.cards.map(c => ({ ...c, icon: c.status === 'done' ? 'done' : 'queued' })));
+  updateExtractBtn();
 
   // Check if already running
   const statusResp = await fetch('/api/extract/status');
@@ -359,10 +361,14 @@ function renderExtractList(cards) {
     const iconMap = { done: '&#10003;', error: '&#10007;', progress: '&#9679;', queued: '&#9675;' };
     const cardName = c.name || c.card_id || '';
     const encodedName = encodeURIComponent(cardName);
+    let checkbox = '';
+    if (c.icon === 'queued' && !extractPollInterval) {
+      checkbox = '<input type="checkbox" class="extract-check" data-card="' + cardName.replace(/"/g, '&quot;') + '" onchange="updateExtractBtn()" style="margin-right:4px;">';
+    }
     let actions = '';
     if (c.icon === 'done') actions = '<span class="review-link" onclick="location.hash=\\'review/' + encodedName + '\\'">Review &rarr;</span>';
-    if (c.icon === 'queued' && !extractPollInterval) actions = '<span class="review-link" onclick="triggerExtractOne(\\'' + cardName.replace(/'/g, "\\\\'") + '\\')">Extract</span>';
     item.innerHTML =
+      checkbox +
       '<span class="icon ' + c.icon + '">' + (iconMap[c.icon] || '') + '</span>' +
       '<span class="name">' + cardName + '</span>' +
       '<span class="status-text">' + (c.statusText || c.status || '') + '</span>' +
@@ -372,34 +378,32 @@ function renderExtractList(cards) {
   });
 }
 
-async function triggerExtract() {
-  const force = document.getElementById('force-extract').checked;
-  const errorEl = document.getElementById('extract-error');
-  errorEl.style.display = 'none';
-  const resp = await fetch('/api/extract', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force: force }),
-  });
-  const data = await resp.json();
-  if (data.status === 'already_running') return;
-  if (data.status === 'error') {
-    errorEl.textContent = data.error;
-    errorEl.style.display = '';
-    return;
-  }
-
-  startExtractPolling();
+function getSelectedCards() {
+  return Array.from(document.querySelectorAll('.extract-check:checked')).map(cb => cb.dataset.card);
 }
 
-async function triggerExtractOne(cardName) {
+function updateExtractBtn() {
+  const selected = getSelectedCards().length;
+  const btn = document.getElementById('extract-btn');
+  btn.textContent = selected > 0 ? 'Extract Selected (' + selected + ')' : 'Extract Selected';
+  btn.disabled = selected === 0;
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.extract-check').forEach(cb => { cb.checked = checked; });
+  updateExtractBtn();
+}
+
+async function triggerExtractSelected() {
+  const cards = getSelectedCards();
+  if (cards.length === 0) return;
   const force = document.getElementById('force-extract').checked;
   const errorEl = document.getElementById('extract-error');
   errorEl.style.display = 'none';
   const resp = await fetch('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force: force, card: cardName }),
+    body: JSON.stringify({ force: force, cards: cards }),
   });
   const data = await resp.json();
   if (data.status === 'already_running') return;
@@ -867,10 +871,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 options = {}
 
             force = options.get("force", False)
-            card_filter = options.get("card", None)
+            cards_filter = options.get("cards", None)
             pairs, _ = find_pairs(input_dir)
-            if card_filter:
-                pairs = [(f, b) for f, b in pairs if f.stem == card_filter]
+            if cards_filter:
+                card_set = set(cards_filter)
+                pairs = [(f, b) for f, b in pairs if f.stem in card_set]
             text_dir = output_dir / "text"
             text_dir.mkdir(exist_ok=True)
             json_dir.mkdir(exist_ok=True)
