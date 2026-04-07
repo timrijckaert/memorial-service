@@ -712,7 +712,7 @@ class ExtractionWorker:
             }
 
     def start(self, pairs, text_dir, json_dir, conflicts_dir,
-              system_prompt, user_template, ollama_available, force):
+              system_prompt, user_template, client, force):
         with self._lock:
             if self._state["status"] == "running":
                 return False
@@ -729,7 +729,7 @@ class ExtractionWorker:
         thread = threading.Thread(
             target=self._run,
             args=(pairs, text_dir, json_dir, conflicts_dir,
-                  system_prompt, user_template, ollama_available, force),
+                  system_prompt, user_template, client, force),
             daemon=True,
         )
         thread.start()
@@ -742,7 +742,7 @@ class ExtractionWorker:
                 self._state["status"] = "cancelling"
 
     def _run(self, pairs, text_dir, json_dir, conflicts_dir,
-             system_prompt, user_template, ollama_available, force):
+             system_prompt, user_template, client, force):
         for front_path, back_path in pairs:
             if self._cancel.is_set():
                 with self._lock:
@@ -772,7 +772,7 @@ class ExtractionWorker:
             result = _extract_one(
                 front_path, back_path,
                 text_dir, json_dir, conflicts_dir,
-                ollama_available, system_prompt, user_template,
+                client, system_prompt, user_template,
                 on_step=_on_step,
             )
 
@@ -957,23 +957,24 @@ class AppHandler(BaseHTTPRequestHandler):
                 system_prompt = system_prompt_path.read_text()
                 user_template = user_template_path.read_text()
 
-            # Check Ollama availability
-            ollama_available = False
+            # Create Gemini client
+            from src.extract import _make_gemini_client
+            config_path = input_dir.parent / "config.json"
+            client = None
             if system_prompt:
-                try:
-                    import ollama as ollama_client
-                    ollama_client.list()
-                    ollama_available = True
-                except Exception:
-                    pass
-
-            if not ollama_available and system_prompt:
-                self._send_json({"status": "error", "error": "Ollama is not running. Start it with `ollama serve`."}, 503)
-                return
+                if config_path.exists():
+                    try:
+                        client = _make_gemini_client(config_path)
+                    except Exception as e:
+                        self._send_json({"status": "error", "error": f"Failed to create Gemini client: {e}"}, 503)
+                        return
+                else:
+                    self._send_json({"status": "error", "error": "config.json not found. Create it with your Gemini API key."}, 503)
+                    return
 
             started = self.server.worker.start(
                 pairs, text_dir, json_dir, conflicts_dir,
-                system_prompt, user_template, ollama_available, force,
+                system_prompt, user_template, client, force,
             )
             if started:
                 self._send_json({"status": "started"})
