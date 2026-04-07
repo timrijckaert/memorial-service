@@ -202,3 +202,43 @@ def test_images_path_traversal_returns_403(tmp_path):
         assert exc_info.value.code == 403
     finally:
         server.shutdown()
+
+
+from unittest.mock import patch
+
+
+@patch("src.review.webbrowser.open")
+def test_start_review_opens_browser_and_serves(mock_open, tmp_path):
+    from src.review import start_review
+    import threading
+
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    (json_dir / "card.json").write_text('{"person": {}, "notes": [], "source": {}}')
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    # Run start_review in a thread so we can stop it
+    server_holder = {}
+
+    original_make = __import__("src.review", fromlist=["make_server"]).make_server
+
+    def patched_make(json_dir, input_dir, port=0):
+        s = original_make(json_dir, input_dir, port=port)
+        server_holder["server"] = s
+        return s
+
+    with patch("src.review.make_server", side_effect=patched_make):
+        thread = threading.Thread(target=start_review, args=(json_dir, input_dir), daemon=True)
+        thread.start()
+
+        # Give server a moment to start
+        import time
+        time.sleep(0.3)
+
+        assert mock_open.called
+        url_arg = mock_open.call_args[0][0]
+        assert "http://localhost:" in url_arg
+
+        server_holder["server"].shutdown()
+        thread.join(timeout=2)

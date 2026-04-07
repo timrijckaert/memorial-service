@@ -1,5 +1,6 @@
 import json
 import mimetypes
+import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote
@@ -338,3 +339,14 @@ def make_server(json_dir: Path, input_dir: Path, port: int = 0) -> HTTPServer:
     server.json_dir = json_dir
     server.input_dir = input_dir
     return server
+
+
+def start_review(json_dir: Path, input_dir: Path) -> None:
+    """Start the review server and open the browser."""
+    server = make_server(json_dir, input_dir)
+    port = server.server_address[1]
+    url = f"http://localhost:{port}"
+    print(f"Review server running at {url}")
+    print("Press Ctrl+C to stop.")
+    webbrowser.open(url)
+    server.serve_forever()

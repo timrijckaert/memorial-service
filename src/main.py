@@ -5,6 +5,7 @@ import ollama
 
 from src.merge import find_pairs, merge_all
 from src.extract import extract_all
+from src.review import start_review
 
 
 def main() -> None:
@@ -13,7 +14,7 @@ def main() -> None:
         "command",
         nargs="?",
         default="all",
-        choices=["merge", "extract", "all"],
+        choices=["merge", "extract", "all", "review"],
         help="Which phase to run (default: all)",
     )
     parser.add_argument(
@@ -45,6 +46,14 @@ def main() -> None:
     output_dir.mkdir(exist_ok=True)
     text_dir.mkdir(exist_ok=True)
     json_dir.mkdir(exist_ok=True)
+
+    # --- Review phase ---
+    if args.command == "review":
+        if not json_dir.exists() or not any(json_dir.glob("*.json")):
+            print("No extracted cards found. Run 'extract' first.")
+            return
+        start_review(json_dir, input_dir)
+        return
 
     total = len(pairs)
     print(f"Found {total} pair{'s' if total != 1 else ''} in input/")
