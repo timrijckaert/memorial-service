@@ -65,10 +65,8 @@ def test_api_card_detail_returns_data(tmp_path):
     output_dir = tmp_path / "output"
     output_dir.mkdir()
 
-    card = {"person": {"first_name": "Jan"}, "notes": [], "source": {"front_text_file": "f.txt", "back_text_file": "b.txt"}}
+    card = {"person": {"first_name": "Jan"}, "notes": [], "source": {"front_text_file": "f.txt", "back_text_file": "b.txt", "front_image_file": "Jan.jpeg", "back_image_file": "Jan 1.jpeg"}}
     (json_dir / "Jan.json").write_text(json.dumps(card))
-    (input_dir / "Jan.jpeg").write_text("")
-    (input_dir / "Jan 1.jpeg").write_text("")
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:

@@ -64,7 +64,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(list_cards(json_dir))
         elif self.path.startswith("/api/cards/"):
             card_id = unquote(self.path[len("/api/cards/"):])
-            result = load_card(card_id, json_dir, input_dir)
+            result = load_card(card_id, json_dir)
             if result is None:
                 self._send_error(404, "Card not found")
             else:

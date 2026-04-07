@@ -9,7 +9,7 @@ def list_cards(json_dir: Path) -> list[str]:
     return sorted(p.stem for p in json_dir.iterdir() if p.suffix == ".json")
 
 
-def load_card(card_id: str, json_dir: Path, input_dir: Path) -> dict | None:
+def load_card(card_id: str, json_dir: Path) -> dict | None:
     """Load card JSON and resolve front/back image filenames. Returns None if not found."""
     json_path = json_dir / f"{card_id}.json"
     if not json_path.exists():

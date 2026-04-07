@@ -21,8 +21,6 @@ def test_list_cards_empty_dir(tmp_path):
 def test_load_card_returns_json_and_image_paths(tmp_path):
     json_dir = tmp_path / "json"
     json_dir.mkdir()
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
 
     card_data = {
         "person": {"first_name": "Jan", "last_name": "Pansen"},
@@ -30,13 +28,13 @@ def test_load_card_returns_json_and_image_paths(tmp_path):
         "source": {
             "front_text_file": "Jan Pansen_front.txt",
             "back_text_file": "Jan Pansen 1_back.txt",
+            "front_image_file": "Jan Pansen.jpeg",
+            "back_image_file": "Jan Pansen 1.jpeg",
         },
     }
     (json_dir / "Jan Pansen.json").write_text(json.dumps(card_data))
-    (input_dir / "Jan Pansen.jpeg").write_text("")
-    (input_dir / "Jan Pansen 1.jpeg").write_text("")
 
-    result = load_card("Jan Pansen", json_dir, input_dir)
+    result = load_card("Jan Pansen", json_dir)
 
     assert result["data"] == card_data
     assert result["front_image"] == "Jan Pansen.jpeg"
@@ -44,7 +42,7 @@ def test_load_card_returns_json_and_image_paths(tmp_path):
 
 
 def test_load_card_missing_json_returns_none(tmp_path):
-    result = load_card("nonexistent", tmp_path, tmp_path)
+    result = load_card("nonexistent", tmp_path)
 
     assert result is None
 
