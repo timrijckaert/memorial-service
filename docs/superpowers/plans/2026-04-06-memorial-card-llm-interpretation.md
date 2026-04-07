@@ -97,10 +97,16 @@ OUTPUT FIELDS:
 - notes: Array of strings explaining deductions, corrections, uncertainties
 
 KNOWN PLACES (Arrondissement Aalst, Oost-Vlaanderen, Belgium):
-Haaltert, Denderhoutem, Heldergem, Kerksken, Terjoden, Aalst, Baardegem, Erembodegem, Gijzegem, Herdersem, Hofstade, Meldert, Moorsel, Nieuwerkerken, Denderleeuw, Iddergem, Erpe-Mere, Aaigem, Bambrugge, Burst, Erondegem, Erpe, Mere, Ottergem, Vlekkem, Herzele, Borsbeke, Hillegem, Ressegem, Sint-Antelinks, Sint-Lievens-Esse, Lede, Impe, Oordegem, Smetlede, Wanzele, Ninove, Zottegem, Geraardsbergen, Dendermonde, Welle, Lemberge, Tiedekerk
+Haaltert, Denderhoutem, Heldergem, Kerksken, Terjoden, Aalst, Baardegem, Erembodegem, Gijzegem, Herdersem, Hofstade, Meldert, Moorsel, Nieuwerkerken, Denderleeuw, Iddergem, Erpe-Mere, Aaigem, Bambrugge, Burst, Erondegem, Erpe, Mere, Ottergem, Vlekkem, Herzele, Borsbeke, Hillegem, Ressegem, Sint-Antelinks, Sint-Lievens-Esse, Lede, Impe, Oordegem, Smetlede, Wanzele, Ninove, Zottegem, Geraardsbergen, Dendermonde, Welle, Lemberge, Liedekerke
 
 COMMON OCR MISSPELLINGS:
-Haeltert -> Haaltert, Kerkxken -> Kerksken, Haciltert -> Haaltert, Denderhautem -> Denderhoutem, Tiedekérke -> Tiedekerk, Aygem -> Aaigem
+Haeltert -> Haaltert, 
+Kerkxken -> Kerksken, 
+Haciltert -> Haaltert, 
+Denderhautem -> Denderhoutem, 
+Tiedekérke -> Liedekerke, 
+Aygem -> Aaigem
+Tiedekerk -> Liedekerke
 
 --- FRONT TEXT ---
 {front_text}
