@@ -1,6 +1,8 @@
 import json
+import time
 from pathlib import Path
 from threading import Thread
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import urlopen, Request
 
@@ -321,5 +323,177 @@ def test_api_merge_with_force_reprocesses(tmp_path):
         data = json.loads(resp.read())
         assert data["ok"] == 1
         assert data["skipped"] == 0
+    finally:
+        server.shutdown()
+
+
+def test_api_extract_status_idle_by_default(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/api/extract/status")
+        data = json.loads(resp.read())
+        assert data["status"] == "idle"
+    finally:
+        server.shutdown()
+
+
+def test_api_extract_starts_and_completes(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    text_dir = output_dir / "text"
+    text_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+    # Pre-merge so it appears as a valid card
+    _create_test_image(output_dir / "Card A.jpeg", color="red")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        with patch("src.server._extract_one") as mock_extract:
+            mock_extract.return_value = {
+                "front_name": "Card A.jpeg",
+                "ocr": True,
+                "verify_corrections": 0,
+                "interpreted": True,
+                "errors": [],
+                "date_fixes": [],
+            }
+
+            req = Request(f"{base}/api/extract", data=b"{}", method="POST",
+                          headers={"Content-Type": "application/json"})
+            resp = urlopen(req)
+            data = json.loads(resp.read())
+            assert data["status"] == "started"
+
+            # Wait for worker to finish
+            for _ in range(50):
+                time.sleep(0.1)
+                resp = urlopen(f"{base}/api/extract/status")
+                status = json.loads(resp.read())
+                if status["status"] == "idle":
+                    break
+
+            assert status["status"] == "idle"
+            assert len(status["done"]) == 1
+    finally:
+        server.shutdown()
+
+
+def test_api_extract_cancel_stops_worker(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    text_dir = output_dir / "text"
+    text_dir.mkdir()
+
+    # Create multiple pairs so there's something to cancel
+    for name in ["Card A", "Card B", "Card C"]:
+        _create_test_image(input_dir / f"{name}.jpeg", color="red")
+        _create_test_image(input_dir / f"{name} 1.jpeg", color="blue")
+        _create_test_image(output_dir / f"{name}.jpeg", color="red")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        def slow_extract(*args, **kwargs):
+            time.sleep(0.5)
+            return {
+                "front_name": "test.jpeg",
+                "ocr": True,
+                "verify_corrections": 0,
+                "interpreted": True,
+                "errors": [],
+                "date_fixes": [],
+            }
+
+        with patch("src.server._extract_one", side_effect=slow_extract):
+            # Start extraction
+            req = Request(f"{base}/api/extract", data=b"{}", method="POST",
+                          headers={"Content-Type": "application/json"})
+            urlopen(req)
+
+            # Give it a moment to start processing
+            time.sleep(0.2)
+
+            # Cancel
+            cancel_req = Request(f"{base}/api/extract/cancel", data=b"{}", method="POST",
+                                 headers={"Content-Type": "application/json"})
+            resp = urlopen(cancel_req)
+            cancel_data = json.loads(resp.read())
+            assert cancel_data["status"] == "cancelling"
+
+            # Wait for it to finish current card and stop
+            for _ in range(50):
+                time.sleep(0.1)
+                resp = urlopen(f"{base}/api/extract/status")
+                status = json.loads(resp.read())
+                if status["status"] == "cancelled":
+                    break
+
+            assert status["status"] == "cancelled"
+            # Should not have processed all 3
+            assert len(status["done"]) + len(status["queue"]) < 3 or len(status["queue"]) > 0
+    finally:
+        server.shutdown()
+
+
+def test_api_extract_skips_already_extracted(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+    _create_test_image(output_dir / "Card A.jpeg", color="red")
+    # Already extracted
+    (json_dir / "Card A.json").write_text('{"person": {}, "notes": [], "source": {}}')
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/api/extract/cards")
+        data = json.loads(resp.read())
+        assert len(data["cards"]) == 1
+        assert data["cards"][0]["status"] == "done"
+    finally:
+        server.shutdown()
+
+
+def test_api_extract_cards_lists_eligible(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    # Merged card, not yet extracted
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+    _create_test_image(output_dir / "Card A.jpeg", color="red")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/api/extract/cards")
+        data = json.loads(resp.read())
+        assert len(data["cards"]) == 1
+        assert data["cards"][0]["name"] == "Card A"
+        assert data["cards"][0]["status"] == "pending"
     finally:
         server.shutdown()

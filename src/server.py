@@ -1,9 +1,11 @@
 import json
 import mimetypes
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote
 
+from src.extract import _extract_one
 from src.merge import find_pairs, merge_all
 from src.review import list_cards, load_card, save_card
 
@@ -15,6 +17,98 @@ APP_HTML = """\
 <body><h1>Memorial Card Digitizer</h1><p>Under construction</p></body>
 </html>
 """
+
+
+class ExtractionWorker:
+    """Runs extraction sequentially on a background thread."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._cancel = threading.Event()
+        self._state = {
+            "status": "idle",
+            "current": None,
+            "done": [],
+            "errors": [],
+            "queue": [],
+        }
+
+    def get_status(self) -> dict:
+        with self._lock:
+            return dict(self._state)
+
+    def start(self, pairs, text_dir, json_dir, conflicts_dir,
+              prompt_template, ollama_available, force):
+        with self._lock:
+            if self._state["status"] == "running":
+                return False
+            queue_names = [front.stem for front, _ in pairs]
+            self._state = {
+                "status": "running",
+                "current": None,
+                "done": [],
+                "errors": [],
+                "queue": queue_names,
+            }
+            self._cancel.clear()
+
+        thread = threading.Thread(
+            target=self._run,
+            args=(pairs, text_dir, json_dir, conflicts_dir,
+                  prompt_template, ollama_available, force),
+            daemon=True,
+        )
+        thread.start()
+        return True
+
+    def cancel(self):
+        self._cancel.set()
+        with self._lock:
+            if self._state["status"] == "running":
+                self._state["status"] = "cancelling"
+
+    def _run(self, pairs, text_dir, json_dir, conflicts_dir,
+             prompt_template, ollama_available, force):
+        for front_path, back_path in pairs:
+            if self._cancel.is_set():
+                with self._lock:
+                    self._state["status"] = "cancelled"
+                return
+
+            card_name = front_path.stem
+
+            with self._lock:
+                if card_name in self._state["queue"]:
+                    self._state["queue"].remove(card_name)
+                self._state["current"] = {"card_id": card_name, "step": "ocr_front"}
+
+            # Skip if already extracted and not forcing
+            json_output = json_dir / f"{front_path.stem}.json"
+            if not force and json_output.exists():
+                with self._lock:
+                    self._state["done"].append(card_name)
+                    self._state["current"] = None
+                continue
+
+            result = _extract_one(
+                front_path, back_path,
+                text_dir, json_dir, conflicts_dir,
+                ollama_available, prompt_template,
+            )
+
+            with self._lock:
+                if result["errors"]:
+                    self._state["errors"].append({
+                        "card_id": card_name,
+                        "reason": "; ".join(result["errors"]),
+                    })
+                else:
+                    self._state["done"].append(card_name)
+                self._state["current"] = None
+
+        with self._lock:
+            if self._state["status"] != "cancelled":
+                self._state["status"] = "idle"
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -93,6 +187,20 @@ class AppHandler(BaseHTTPRequestHandler):
                 "errors": errors,
             }
             self._send_json(result)
+        elif self.path == "/api/extract/status":
+            self._send_json(self.server.worker.get_status())
+        elif self.path == "/api/extract/cards":
+            pairs, _ = find_pairs(input_dir)
+            cards = []
+            for front, back in pairs:
+                has_json = (json_dir / f"{front.stem}.json").exists()
+                cards.append({
+                    "name": front.stem,
+                    "front": front.name,
+                    "back": back.name,
+                    "status": "done" if has_json else "pending",
+                })
+            self._send_json({"cards": cards})
         else:
             self._send_error(404, "Not found")
 
@@ -122,6 +230,7 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         input_dir = self.server.input_dir
         output_dir = self.server.output_dir
+        json_dir = self.server.json_dir
 
         if self.path == "/api/merge":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -139,6 +248,48 @@ class AppHandler(BaseHTTPRequestHandler):
                 "skipped": skipped,
                 "errors": pairing_errors + merge_errors,
             })
+        elif self.path == "/api/extract":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length) if content_length else b"{}"
+            try:
+                options = json.loads(body)
+            except json.JSONDecodeError:
+                options = {}
+
+            force = options.get("force", False)
+            pairs, _ = find_pairs(input_dir)
+            text_dir = output_dir / "text"
+            text_dir.mkdir(exist_ok=True)
+            json_dir.mkdir(exist_ok=True)
+            conflicts_dir = output_dir / "date_conflicts"
+
+            # Load prompt template
+            prompt_path = input_dir.parent / "prompts" / "extract_person.txt"
+            prompt_template = None
+            if prompt_path.exists():
+                prompt_template = prompt_path.read_text()
+
+            # Check Ollama availability
+            ollama_available = False
+            if prompt_template:
+                try:
+                    import ollama as ollama_client
+                    ollama_client.list()
+                    ollama_available = True
+                except Exception:
+                    pass
+
+            started = self.server.worker.start(
+                pairs, text_dir, json_dir, conflicts_dir,
+                prompt_template, ollama_available, force,
+            )
+            if started:
+                self._send_json({"status": "started"})
+            else:
+                self._send_json({"status": "already_running"}, 409)
+        elif self.path == "/api/extract/cancel":
+            self.server.worker.cancel()
+            self._send_json({"status": "cancelling"})
         else:
             self._send_error(404, "Not found")
 
@@ -149,4 +300,5 @@ def make_server(json_dir: Path, input_dir: Path, output_dir: Path, port: int = 0
     server.json_dir = json_dir
     server.input_dir = input_dir
     server.output_dir = output_dir
+    server.worker = ExtractionWorker()
     return server
