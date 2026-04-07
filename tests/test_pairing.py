@@ -1,83 +1,60 @@
 # tests/test_pairing.py
-from pathlib import Path
-from src.images.pairing import find_pairs
+from src.images.pairing import normalize_filename, similarity_score
 
 
-def test_find_pairs_matches_front_and_back(tmp_path):
-    front = tmp_path / "Vanden Bruelle Emiel Jozef Haaltert  bidprentje 18 december 1928.jpeg"
-    back = tmp_path / "Vanden Bruelle Emiel Jozef Haaltert  bidprentje 18 december 1928 1.jpeg"
-    front.touch()
-    back.touch()
-
-    pairs, errors = find_pairs(tmp_path)
-
-    assert len(pairs) == 1
-    assert pairs[0] == (front, back)
-    assert errors == []
+def test_normalize_strips_extension():
+    assert normalize_filename("photo.jpeg") == "photo"
 
 
-def test_find_pairs_reports_missing_back(tmp_path):
-    front = tmp_path / "De Smet Maria Aalst  bidprentje 3 maart 1945.jpeg"
-    front.touch()
-
-    pairs, errors = find_pairs(tmp_path)
-
-    assert pairs == []
-    assert len(errors) == 1
-    assert "missing back" in errors[0].lower()
+def test_normalize_lowercases():
+    assert normalize_filename("Photo.JPEG") == "photo"
 
 
-def test_find_pairs_reports_missing_front(tmp_path):
-    back = tmp_path / "De Smet Maria Aalst  bidprentje 3 maart 1945 1.jpeg"
-    back.touch()
-
-    pairs, errors = find_pairs(tmp_path)
-
-    assert pairs == []
-    assert len(errors) == 1
-    assert "missing front" in errors[0].lower()
+def test_normalize_collapses_whitespace():
+    assert normalize_filename("Vanden  Bruelle   Emiel.jpeg") == "vanden bruelle emiel"
 
 
-def test_find_pairs_handles_multiple_pairs_and_jpg_extension(tmp_path):
-    # Pair 1: .jpeg
-    (tmp_path / "Person A  bidprentje 1920.jpeg").touch()
-    (tmp_path / "Person A  bidprentje 1920 1.jpeg").touch()
-    # Pair 2: .jpg
-    (tmp_path / "Person B  bidprentje 1930.jpg").touch()
-    (tmp_path / "Person B  bidprentje 1930 1.jpg").touch()
-
-    pairs, errors = find_pairs(tmp_path)
-
-    assert len(pairs) == 2
-    assert errors == []
+def test_normalize_removes_back_suffix_space_1():
+    assert normalize_filename("Person Name 1.jpeg") == "person name"
 
 
-def test_find_pairs_handles_uppercase_extension(tmp_path):
-    front = tmp_path / "Person C  bidprentje 1940.JPEG"
-    back = tmp_path / "Person C  bidprentje 1940 1.JPEG"
-    front.touch()
-    back.touch()
-
-    pairs, errors = find_pairs(tmp_path)
-
-    assert len(pairs) == 1
-    assert errors == []
+def test_normalize_removes_back_suffix_underscore_back():
+    assert normalize_filename("Person_Name_back.jpeg") == "person name"
 
 
-def test_find_pairs_handles_cross_extension_case(tmp_path):
-    front = tmp_path / "Person D  bidprentje 1950.jpg"
-    back = tmp_path / "Person D  bidprentje 1950 1.JPEG"
-    front.touch()
-    back.touch()
-
-    pairs, errors = find_pairs(tmp_path)
-
-    assert len(pairs) == 1
-    assert errors == []
+def test_normalize_removes_achterkant_suffix():
+    assert normalize_filename("bidprentje_achterkant.jpeg") == "bidprentje"
 
 
-def test_find_pairs_empty_directory(tmp_path):
-    pairs, errors = find_pairs(tmp_path)
+def test_similarity_identical_names():
+    score = similarity_score("person name 1920", "person name 1920")
+    assert score == 100
 
-    assert pairs == []
-    assert errors == []
+
+def test_similarity_front_back_pair():
+    score = similarity_score(
+        "vanden bruelle emiel jozef haaltert bidprentje 18 december 1928",
+        "vanden bruelle emiel jozef haaltert bidprentje 18 december 1928",
+    )
+    assert score == 100
+
+
+def test_similarity_partial_overlap():
+    score = similarity_score(
+        "de smet maria theresia bidprentje",
+        "de smet maria bidprentje",
+    )
+    assert 50 < score < 100
+
+
+def test_similarity_no_overlap():
+    score = similarity_score("aaa bbb ccc", "xxx yyy zzz")
+    assert score < 20
+
+
+def test_similarity_typo_resilience():
+    score = similarity_score(
+        "pieters jan baptist haaltert 1952",
+        "pieters jan batist haaltert 1952",
+    )
+    assert score > 80
