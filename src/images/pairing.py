@@ -48,6 +48,25 @@ def similarity_score(name_a: str, name_b: str) -> int:
     return round(combined)
 
 
+def read_image_metadata(image_path: Path) -> dict:
+    """Read image metadata: dimensions, DPI, and file size."""
+    img = Image.open(image_path)
+    width, height = img.size
+
+    dpi_info = img.info.get("dpi")
+    dpi = round(dpi_info[0]) if dpi_info else None
+
+    file_size_bytes = image_path.stat().st_size
+
+    return {
+        "filename": image_path.name,
+        "width": width,
+        "height": height,
+        "dpi": dpi,
+        "file_size_bytes": file_size_bytes,
+    }
+
+
 def find_pairs(input_dir: Path) -> tuple[list[tuple[Path, Path]], list[str]]:
     """Find front/back pairs in input_dir based on filename convention.
 

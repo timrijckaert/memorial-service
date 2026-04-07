@@ -58,3 +58,32 @@ def test_similarity_typo_resilience():
         "pieters jan batist haaltert 1952",
     )
     assert score > 80
+
+
+from pathlib import Path
+from PIL import Image
+from src.images.pairing import read_image_metadata
+
+
+def test_read_image_metadata(tmp_path):
+    img_path = tmp_path / "test.jpeg"
+    img = Image.new("RGB", (200, 300))
+    img.save(img_path, "JPEG")
+
+    meta = read_image_metadata(img_path)
+
+    assert meta["filename"] == "test.jpeg"
+    assert meta["width"] == 200
+    assert meta["height"] == 300
+    assert "dpi" in meta
+    assert meta["file_size_bytes"] > 0
+
+
+def test_read_image_metadata_with_dpi(tmp_path):
+    img_path = tmp_path / "hires.jpeg"
+    img = Image.new("RGB", (100, 100))
+    img.save(img_path, "JPEG", dpi=(300, 300))
+
+    meta = read_image_metadata(img_path)
+
+    assert meta["dpi"] == 300
