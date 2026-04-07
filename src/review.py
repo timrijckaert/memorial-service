@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-JPEG_EXTENSIONS = {".jpeg", ".jpg"}
+JPEG_EXTENSIONS = (".jpeg", ".jpg")
 
 
 def list_cards(json_dir: Path) -> list[str]:
@@ -39,5 +39,5 @@ def save_card(card_id: str, json_dir: Path, updated_data: dict) -> None:
     """Save corrected card data, preserving the original source field from disk."""
     json_path = json_dir / f"{card_id}.json"
     original = json.loads(json_path.read_text())
-    updated_data["source"] = original["source"]
-    json_path.write_text(json.dumps(updated_data, indent=2, ensure_ascii=False))
+    merged = {**updated_data, "source": original["source"]}
+    json_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False))
