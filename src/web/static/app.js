@@ -248,24 +248,6 @@ async function pollExtractStatus() {
     (status.errors.length > 0 ? '<span style="color:#e74c3c;">' + status.errors.length + ' error(s)</span>' : '') +
     '<span id="extract-elapsed" style="margin-left:auto; color:#666;"></span>';
 
-  // Update in-flight cards display
-  const inFlightEl = document.getElementById('in-flight-cards');
-  if (status.in_flight.length > 0) {
-    inFlightEl.style.display = '';
-    let html = '';
-    status.in_flight.forEach(function(card) {
-      const stageLabel = card.stage.replace(/_/g, ' ');
-      html += '<div class="in-flight-item">' +
-        '<div class="dot"></div>' +
-        '<span class="name">' + card.card_id + '</span>' +
-        '<span class="label">' + stageLabel + '</span>' +
-        '</div>';
-    });
-    inFlightEl.innerHTML = html;
-  } else {
-    inFlightEl.style.display = 'none';
-  }
-
   // Build worker status map for card list
   var workerMap = {};
   status.done.forEach(function(name) { workerMap[name] = { icon: 'done', statusText: 'Done' }; });
