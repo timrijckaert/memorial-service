@@ -497,3 +497,25 @@ def test_api_extract_cards_lists_eligible(tmp_path):
         assert data["cards"][0]["status"] == "pending"
     finally:
         server.shutdown()
+
+
+def test_html_contains_navigation_tabs(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/")
+        body = resp.read().decode()
+        assert "Merge" in body
+        assert "Extract" in body
+        assert "Review" in body
+        assert "#merge" in body
+        assert "#extract" in body
+        assert "#review" in body
+    finally:
+        server.shutdown()
