@@ -4,6 +4,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote
 
+from src.merge import find_pairs
 from src.review import list_cards, load_card, save_card
 
 # Placeholder HTML — replaced with full SPA in a later task
@@ -77,6 +78,21 @@ class AppHandler(BaseHTTPRequestHandler):
         elif self.path.startswith("/output-images/"):
             filename = unquote(self.path[len("/output-images/"):])
             self._serve_image(output_dir, filename)
+        elif self.path == "/api/merge/pairs":
+            pairs, errors = find_pairs(input_dir)
+            result = {
+                "pairs": [
+                    {
+                        "name": front.stem,
+                        "front": front.name,
+                        "back": back.name,
+                        "merged": (output_dir / front.name).exists(),
+                    }
+                    for front, back in pairs
+                ],
+                "errors": errors,
+            }
+            self._send_json(result)
         else:
             self._send_error(404, "Not found")
 

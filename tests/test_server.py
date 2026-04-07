@@ -158,3 +158,88 @@ def test_images_path_traversal_returns_403(tmp_path):
         assert exc_info.value.code == 403
     finally:
         server.shutdown()
+
+
+def test_output_images_serves_merged_jpeg(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "merged.jpeg").write_bytes(b"\xff\xd8merged content")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/output-images/merged.jpeg")
+        assert resp.read() == b"\xff\xd8merged content"
+        assert "image/jpeg" in resp.headers.get("Content-Type", "")
+    finally:
+        server.shutdown()
+
+
+def test_output_images_path_traversal_returns_403(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(f"{base}/output-images/..%2Fsecret.jpeg")
+        assert exc_info.value.code == 403
+    finally:
+        server.shutdown()
+
+
+def test_api_merge_pairs_returns_detected_pairs(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    # Create a valid pair
+    (input_dir / "De Smet Maria.jpeg").write_bytes(b"\xff\xd8front")
+    (input_dir / "De Smet Maria 1.jpeg").write_bytes(b"\xff\xd8back")
+    # Create an orphan (no back)
+    (input_dir / "Orphan Jan.jpeg").write_bytes(b"\xff\xd8front")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/api/merge/pairs")
+        data = json.loads(resp.read())
+        assert len(data["pairs"]) == 1
+        assert data["pairs"][0]["name"] == "De Smet Maria"
+        assert data["pairs"][0]["front"] == "De Smet Maria.jpeg"
+        assert data["pairs"][0]["back"] == "De Smet Maria 1.jpeg"
+        assert len(data["errors"]) == 1
+        assert "Orphan Jan" in data["errors"][0]
+    finally:
+        server.shutdown()
+
+
+def test_api_merge_pairs_shows_already_merged(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    (input_dir / "Card A.jpeg").write_bytes(b"\xff\xd8front")
+    (input_dir / "Card A 1.jpeg").write_bytes(b"\xff\xd8back")
+    # Already merged
+    (output_dir / "Card A.jpeg").write_bytes(b"\xff\xd8merged")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/api/merge/pairs")
+        data = json.loads(resp.read())
+        assert data["pairs"][0]["merged"] is True
+    finally:
+        server.shutdown()
