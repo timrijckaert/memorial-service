@@ -203,7 +203,10 @@ class ExtractionWorker:
                 return
 
             with self._lock:
-                self._remove_in_flight(card_name)
+                for p in self._status.in_flight:
+                    if p.card_id == card_name:
+                        p.stage = "waiting"
+                        break
 
             await ocr_queue.put(_OcrResult(
                 card_name=card_name,
@@ -227,10 +230,13 @@ class ExtractionWorker:
                 break
 
             if self._cancel.is_set():
-                continue  # drain remaining items
+                with self._lock:
+                    self._remove_in_flight(item.card_name)
+                continue
 
             if not backend:
                 with self._lock:
+                    self._remove_in_flight(item.card_name)
                     self._status.done.append(item.card_name)
                 continue
 
@@ -238,9 +244,10 @@ class ExtractionWorker:
 
             # Date verification
             with self._lock:
-                self._status.in_flight.append(
-                    CardProgress(card_name, "date_verify")
-                )
+                for p in self._status.in_flight:
+                    if p.card_id == card_name:
+                        p.stage = "date_verify"
+                        break
 
             try:
                 for txt_path, img_path in [
