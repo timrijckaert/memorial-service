@@ -1,0 +1,5 @@
+--- FRONT TEXT ---
+{front_text}
+
+--- BACK TEXT ---
+{back_text}
