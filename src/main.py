@@ -1,11 +1,13 @@
 # src/main.py
 import argparse
 from pathlib import Path
+import webbrowser
+
 import ollama
 
 from src.merge import find_pairs, merge_all
 from src.extract import extract_all
-from src.review import start_review
+from src.server import make_server
 
 
 def main() -> None:
@@ -13,9 +15,9 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs="?",
-        default="all",
-        choices=["merge", "extract", "all", "review"],
-        help="Which phase to run (default: all)",
+        default="serve",
+        choices=["merge", "extract", "all", "serve"],
+        help="Which phase to run (default: serve)",
     )
     parser.add_argument(
         "--force",
@@ -32,6 +34,21 @@ def main() -> None:
     conflicts_dir = output_dir / "date_conflicts"
     prompt_path = script_dir / "prompts" / "extract_person.txt"
 
+    # --- Serve (web UI) ---
+    if args.command == "serve":
+        input_dir.mkdir(exist_ok=True)
+        output_dir.mkdir(exist_ok=True)
+        json_dir.mkdir(exist_ok=True)
+
+        server = make_server(json_dir, input_dir, output_dir)
+        port = server.server_address[1]
+        url = f"http://localhost:{port}"
+        print(f"Memorial Card Digitizer running at {url}")
+        print("Press Ctrl+C to stop.")
+        webbrowser.open(url)
+        server.serve_forever()
+        return
+
     if not input_dir.exists():
         input_dir.mkdir()
         print(f"Created {input_dir}/ — drop your scans there and run again.")
@@ -46,14 +63,6 @@ def main() -> None:
     output_dir.mkdir(exist_ok=True)
     text_dir.mkdir(exist_ok=True)
     json_dir.mkdir(exist_ok=True)
-
-    # --- Review phase ---
-    if args.command == "review":
-        if not json_dir.exists() or not any(json_dir.glob("*.json")):
-            print("No extracted cards found. Run 'extract' first.")
-            return
-        start_review(json_dir, input_dir)
-        return
 
     total = len(pairs)
     print(f"Found {total} pair{'s' if total != 1 else ''} in input/")
