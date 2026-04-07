@@ -357,11 +357,16 @@ function renderExtractList(cards) {
     item.className = 'card-item' + cls;
 
     const iconMap = { done: '&#10003;', error: '&#10007;', progress: '&#9679;', queued: '&#9675;' };
+    const cardName = c.name || c.card_id || '';
+    const encodedName = encodeURIComponent(cardName);
+    let actions = '';
+    if (c.icon === 'done') actions = '<span class="review-link" onclick="location.hash=\\'review/' + encodedName + '\\'">Review &rarr;</span>';
+    if (c.icon === 'queued' && !extractPollInterval) actions = '<span class="review-link" onclick="triggerExtractOne(\\'' + cardName.replace(/'/g, "\\\\'") + '\\')">Extract</span>';
     item.innerHTML =
       '<span class="icon ' + c.icon + '">' + (iconMap[c.icon] || '') + '</span>' +
-      '<span class="name">' + (c.name || c.card_id || '') + '</span>' +
+      '<span class="name">' + cardName + '</span>' +
       '<span class="status-text">' + (c.statusText || c.status || '') + '</span>' +
-      (c.icon === 'done' ? '<span class="review-link" onclick="location.hash=\\'review/' + encodeURIComponent(c.name || c.card_id || '') + '\\'">Review &rarr;</span>' : '');
+      actions;
 
     list.appendChild(item);
   });
@@ -384,6 +389,25 @@ async function triggerExtract() {
     return;
   }
 
+  startExtractPolling();
+}
+
+async function triggerExtractOne(cardName) {
+  const force = document.getElementById('force-extract').checked;
+  const errorEl = document.getElementById('extract-error');
+  errorEl.style.display = 'none';
+  const resp = await fetch('/api/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force: force, card: cardName }),
+  });
+  const data = await resp.json();
+  if (data.status === 'already_running') return;
+  if (data.status === 'error') {
+    errorEl.textContent = data.error;
+    errorEl.style.display = '';
+    return;
+  }
   startExtractPolling();
 }
 
@@ -843,7 +867,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 options = {}
 
             force = options.get("force", False)
+            card_filter = options.get("card", None)
             pairs, _ = find_pairs(input_dir)
+            if card_filter:
+                pairs = [(f, b) for f, b in pairs if f.stem == card_filter]
             text_dir = output_dir / "text"
             text_dir.mkdir(exist_ok=True)
             json_dir.mkdir(exist_ok=True)
