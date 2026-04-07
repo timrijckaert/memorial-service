@@ -29,6 +29,15 @@
       "python": "${workspaceFolder}/.venv/bin/python"
     },
     {
+      "name": "Run Review",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "args": ["review"],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv/bin/python"
+    },
+    {
       "name": "Run Tests",
       "type": "debugpy",
       "request": "launch",
