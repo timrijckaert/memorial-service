@@ -29,11 +29,11 @@
       "python": "${workspaceFolder}/.venv/bin/python"
     },
     {
-      "name": "Run Review",
+      "name": "Serve (Web UI)",
       "type": "debugpy",
       "request": "launch",
       "module": "src.main",
-      "args": ["review"],
+      "args": ["serve"],
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}/.venv/bin/python"
     },
