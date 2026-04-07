@@ -118,11 +118,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
 
     def _serve_image(self, input_dir: Path, filename: str):
         # Prevent path traversal
-        if ".." in filename or filename.startswith("/"):
+        image_path = (input_dir / filename).resolve()
+        if not str(image_path).startswith(str(input_dir.resolve())):
             self._send_error(403, "Forbidden")
             return
-
-        image_path = input_dir / filename
         if not image_path.exists():
             self._send_error(404, "Image not found")
             return
