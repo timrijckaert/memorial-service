@@ -238,7 +238,7 @@ PERSON_SCHEMA = {
     "required": ["person", "notes"],
 }
 
-MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e4b")
+MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
 
 
 def interpret_text(
