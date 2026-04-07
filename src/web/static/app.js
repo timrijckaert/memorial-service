@@ -122,7 +122,7 @@ async function loadExtractCards() {
   const done = data.cards.filter(c => c.status === 'done').length;
   countEl.textContent = data.cards.length + ' card' + (data.cards.length !== 1 ? 's' : '') + ' (' + done + ' done, ' + pending + ' pending)';
 
-  renderExtractList(data.cards.map(c => ({ ...c, icon: c.status === 'done' ? 'done' : 'queued' })));
+  renderExtractList(data.cards.map(c => ({ ...c, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : '' })));
   updateExtractBtn();
 
   // Check if already running
@@ -290,7 +290,7 @@ async function pollExtractStatus() {
   const merged = allCards.map(c => {
     const w = workerMap[c.name];
     if (w) return { name: c.name, icon: w.icon, statusText: w.statusText, status: w.icon };
-    return { name: c.name, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status, status: c.status };
+    return { name: c.name, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : c.status, status: c.status };
   });
   renderExtractList(merged);
 
