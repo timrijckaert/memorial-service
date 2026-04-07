@@ -2,38 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run All",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "src.main",
-      "args": ["all"],
-      "cwd": "${workspaceFolder}",
-      "python": "${workspaceFolder}/.venv/bin/python"
-    },
-    {
-      "name": "Run Merge Only",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "src.main",
-      "args": ["merge"],
-      "cwd": "${workspaceFolder}",
-      "python": "${workspaceFolder}/.venv/bin/python"
-    },
-    {
-      "name": "Run Extract Only",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "src.main",
-      "args": ["extract"],
-      "cwd": "${workspaceFolder}",
-      "python": "${workspaceFolder}/.venv/bin/python"
-    },
-    {
       "name": "Serve (Web UI)",
       "type": "debugpy",
       "request": "launch",
       "module": "src.main",
-      "args": ["serve"],
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}/.venv/bin/python"
     },
