@@ -12,10 +12,9 @@ IMPORTANT RULES:
 - "aldaar" (meaning "at that place") refers back to the most recently mentioned location. For example, if someone was born in Denderhoutem and the text says "aldaar overleden", the death place is also Denderhoutem.
 - Normalize place names to their modern Dutch spelling using the known places list below.
 - Add a note whenever you deduce a value, correct an OCR error, or are uncertain about an extraction.
-- For spouse: extract the full name as a single string. Set to null if not mentioned.
-- For parents: extract father and mother names separately. Set the parents object to null if neither parent is mentioned. Individual parent fields can be null if only one is mentioned.
+- For spouses: extract the full name of every spouse as a list of strings, in marriage order (1st marriage first). Set to an empty list [] if no spouse is mentioned. When the text mentions multiple marriages (e.g. "weduwe in 't 1e huwelijk van X, in 't 2e huwelijk van Y"), include ALL spouse names — do not relegate later marriages to notes.
 - CRITICAL — distinguishing parents from spouses on Dutch memorial cards:
-  - "zoon van" / "dochter van" / "kind van" = "son of" / "daughter of" / "child of" → these introduce PARENTS, NOT a spouse.
+  - "zoon van" / "dochter van" / "kind van" = "son of" / "daughter of" / "child of" → these introduce PARENTS. Ignore these names — do NOT extract them.
   - "echtgenoot van" / "echtgenote van" / "man van" / "vrouw van" = "husband of" / "wife of" → these introduce a SPOUSE.
   - "weduwnaar van" / "weduwe van" = "widower of" / "widow of" → these introduce a DECEASED SPOUSE.
   - Do NOT confuse a parent's name for a spouse. Pay close attention to the keyword preceding the name.
@@ -29,9 +28,7 @@ OUTPUT FIELDS:
 - death_date: Date of death in YYYY-MM-DD format
 - death_place: Place of death (normalized to modern spelling)
 - age_at_death: Age at death as an integer (ONLY when needed to deduce a missing date, otherwise null)
-- spouse: Full name of spouse (husband/wife)
-- parents.father: Full name of father
-- parents.mother: Full name of mother (often maiden name)
+- spouses: List of full spouse names in marriage order (1st marriage first). Empty list if none.
 - notes: Array of strings explaining deductions, corrections, uncertainties
 
 KNOWN PLACES (Arrondissement Aalst, Oost-Vlaanderen, Belgium):
