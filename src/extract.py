@@ -200,8 +200,12 @@ def _extract_one(
     conflicts_dir: Path,
     ollama_available: bool,
     prompt_template: str | None,
+    on_step=None,
 ) -> dict:
-    """Process extraction for a single pair: OCR, date verification, LLM interpretation."""
+    """Process extraction for a single pair: OCR, date verification, LLM interpretation.
+
+    on_step: optional callback(step_name) called before each pipeline stage.
+    """
     result = {
         "front_name": front_path.name,
         "ocr": False,
@@ -214,16 +218,29 @@ def _extract_one(
     front_text_path = text_dir / f"{front_path.stem}_front.txt"
     back_text_path = text_dir / f"{back_path.stem}_back.txt"
 
-    # OCR
+    # OCR Front
+    if on_step:
+        on_step("ocr_front")
     try:
         extract_text(front_path, front_text_path)
+    except Exception as e:
+        result["errors"].append(f"{front_path.name} OCR front: {e}")
+        return result
+
+    # OCR Back
+    if on_step:
+        on_step("ocr_back")
+    try:
         extract_text(back_path, back_text_path)
         result["ocr"] = True
     except Exception as e:
-        result["errors"].append(f"{front_path.name} OCR: {e}")
+        result["errors"].append(f"{front_path.name} OCR back: {e}")
+        return result
 
     # Date verification (LLM visual cross-check)
-    if ollama_available and result["ocr"]:
+    if ollama_available:
+        if on_step:
+            on_step("date_verify")
         try:
             for txt_path, img_path in [(front_text_path, front_path), (back_text_path, back_path)]:
                 corrections = verify_dates(img_path, txt_path, conflicts_dir)
@@ -234,7 +251,9 @@ def _extract_one(
             result["errors"].append(f"{front_path.name} date verify: {e}")
 
     # LLM Interpretation
-    if ollama_available and result["ocr"]:
+    if ollama_available:
+        if on_step:
+            on_step("llm_extract")
         json_output_path = json_dir / f"{front_path.stem}.json"
         try:
             interpret_text(front_text_path, back_text_path, json_output_path, prompt_template)

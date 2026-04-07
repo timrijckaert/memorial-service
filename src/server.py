@@ -420,14 +420,53 @@ function startExtractPolling() {
   document.getElementById('cancel-btn').style.display = '';
   document.getElementById('extract-summary').style.display = 'flex';
 
+  extractStartTime = Date.now();
   if (extractPollInterval) clearInterval(extractPollInterval);
   extractPollInterval = setInterval(pollExtractStatus, 1500);
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(updateTimerDisplay, 1000);
   pollExtractStatus();
 }
 
+let extractStartTime = null;
+let extractCardStartTime = null;
+let lastCurrentCardId = null;
+let timerInterval = null;
+
+function formatElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? m + 'm ' + sec + 's' : sec + 's';
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('current-elapsed');
+  if (el && extractCardStartTime) {
+    el.textContent = formatElapsed(Date.now() - extractCardStartTime);
+  }
+  const totalEl = document.getElementById('extract-elapsed');
+  if (totalEl && extractStartTime) {
+    totalEl.textContent = 'Total: ' + formatElapsed(Date.now() - extractStartTime);
+  }
+}
+
 async function pollExtractStatus() {
-  const resp = await fetch('/api/extract/status');
-  const status = await resp.json();
+  const [statusResp, cardsResp] = await Promise.all([
+    fetch('/api/extract/status'),
+    fetch('/api/extract/cards'),
+  ]);
+  const status = await statusResp.json();
+  const allCards = (await cardsResp.json()).cards;
+
+  if (!extractStartTime) extractStartTime = Date.now();
+
+  // Track card change for timer
+  const curId = status.current ? status.current.card_id : null;
+  if (curId !== lastCurrentCardId) {
+    lastCurrentCardId = curId;
+    extractCardStartTime = curId ? Date.now() : null;
+  }
 
   // Update summary
   const summary = document.getElementById('extract-summary');
@@ -435,36 +474,53 @@ async function pollExtractStatus() {
     '<span>' + status.done.length + ' done</span>' +
     (status.current ? '<span>1 in progress</span>' : '') +
     '<span>' + status.queue.length + ' queued</span>' +
-    (status.errors.length > 0 ? '<span style="color:#e74c3c;">' + status.errors.length + ' error(s)</span>' : '');
+    (status.errors.length > 0 ? '<span style="color:#e74c3c;">' + status.errors.length + ' error(s)</span>' : '') +
+    '<span id="extract-elapsed" style="margin-left:auto; color:#666;"></span>';
 
   // Update current card
   const currentEl = document.getElementById('current-card');
   if (status.current) {
     currentEl.style.display = '';
-    document.getElementById('current-name').textContent = status.current.card_id;
+    document.getElementById('current-name').innerHTML = status.current.card_id + ' <span id="current-elapsed" style="color:#888; font-weight:normal; font-size:12px;"></span>';
     const steps = ['ocr_front', 'ocr_back', 'date_verify', 'llm_extract'];
     const currentIdx = steps.indexOf(status.current.step);
     document.querySelectorAll('.pipeline-step').forEach((el, i) => {
       el.className = 'pipeline-step' + (i < currentIdx ? ' done' : i === currentIdx ? ' active' : '');
     });
+    updateTimerDisplay();
   } else {
     currentEl.style.display = 'none';
   }
 
-  // Update card list
-  let cards = [];
-  status.done.forEach(name => cards.push({ name: name, icon: 'done', statusText: 'Done', status: 'done' }));
-  if (status.current) cards.push({ name: status.current.card_id, icon: 'progress', statusText: status.current.step.replace('_', ' '), status: 'progress' });
-  status.errors.forEach(e => cards.push({ name: e.card_id, icon: 'error', statusText: e.reason, status: 'error' }));
-  status.queue.forEach(name => cards.push({ name: name, icon: 'queued', statusText: 'Queued', status: 'queued' }));
-  renderExtractList(cards);
+  // Build a status map from the worker
+  const workerMap = {};
+  status.done.forEach(name => { workerMap[name] = { icon: 'done', statusText: 'Done' }; });
+  if (status.current) {
+    const stepLabel = status.current.step.replace(/_/g, ' ');
+    workerMap[status.current.card_id] = { icon: 'progress', statusText: stepLabel };
+  }
+  status.errors.forEach(e => { workerMap[e.card_id] = { icon: 'error', statusText: e.reason }; });
+  status.queue.forEach(name => { workerMap[name] = { icon: 'queued', statusText: 'Queued' }; });
+
+  // Merge: show all cards, overlay worker status on matching ones
+  const merged = allCards.map(c => {
+    const w = workerMap[c.name];
+    if (w) return { name: c.name, icon: w.icon, statusText: w.statusText, status: w.icon };
+    return { name: c.name, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status, status: c.status };
+  });
+  renderExtractList(merged);
 
   // Check if done
   if (status.status === 'idle' || status.status === 'cancelled') {
     clearInterval(extractPollInterval);
     extractPollInterval = null;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    extractStartTime = null;
+    extractCardStartTime = null;
+    lastCurrentCardId = null;
     document.getElementById('extract-btn').style.display = '';
     document.getElementById('cancel-btn').style.display = 'none';
+    updateExtractBtn();
     if (status.status === 'cancelled') {
       document.getElementById('extract-summary').innerHTML += '<span style="color:#e67e22;"> (cancelled)</span>';
     }
@@ -704,10 +760,16 @@ class ExtractionWorker:
                     self._state["current"] = None
                 continue
 
+            def _on_step(step):
+                with self._lock:
+                    if self._state["current"]:
+                        self._state["current"]["step"] = step
+
             result = _extract_one(
                 front_path, back_path,
                 text_dir, json_dir, conflicts_dir,
                 ollama_available, prompt_template,
+                on_step=_on_step,
             )
 
             with self._lock:
