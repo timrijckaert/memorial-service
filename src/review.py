@@ -186,8 +186,8 @@ REVIEW_HTML = """\
 <div class="main">
   <div class="image-panel">
     <div class="image-toggle">
-      <button id="front-btn" class="active" onclick="showSide('front')">Front</button>
-      <button id="back-btn" onclick="showSide('back')">Back</button>
+      <button id="front-btn" onclick="showSide('front')">Front</button>
+      <button id="back-btn" class="active" onclick="showSide('back')">Back</button>
     </div>
     <div class="image-container">
       <img id="card-image" src="" alt="Card image">
@@ -216,7 +216,7 @@ REVIEW_HTML = """\
 let cards = [];
 let currentIndex = 0;
 let currentCard = null;
-let currentSide = "front";
+let currentSide = "back";
 
 async function init() {
   const resp = await fetch("/api/cards");
@@ -264,7 +264,7 @@ async function loadCard(index) {
   btn.textContent = "Approve";
   btn.classList.remove("saved");
 
-  showSide("front");
+  showSide("back");
 }
 
 function showSide(side) {
