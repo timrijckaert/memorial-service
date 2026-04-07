@@ -362,7 +362,7 @@ function renderExtractList(cards) {
     const cardName = c.name || c.card_id || '';
     const encodedName = encodeURIComponent(cardName);
     let checkbox = '';
-    if (c.icon === 'queued' && !extractPollInterval) {
+    if ((c.icon === 'queued' || c.icon === 'done') && !extractPollInterval) {
       checkbox = '<input type="checkbox" class="extract-check" data-card="' + cardName.replace(/"/g, '&quot;') + '" onchange="updateExtractBtn()" style="margin-right:4px;">';
     }
     let actions = '';
@@ -397,7 +397,11 @@ function toggleSelectAll(checked) {
 async function triggerExtractSelected() {
   const cards = getSelectedCards();
   if (cards.length === 0) return;
-  const force = document.getElementById('force-extract').checked;
+  // Auto-force if any selected card is already done
+  const doneCards = new Set(Array.from(document.querySelectorAll('.extract-check:checked'))
+    .filter(cb => cb.closest('.card-item').querySelector('.icon.done'))
+    .map(cb => cb.dataset.card));
+  const force = document.getElementById('force-extract').checked || doneCards.size > 0;
   const errorEl = document.getElementById('extract-error');
   errorEl.style.display = 'none';
   const resp = await fetch('/api/extract', {
