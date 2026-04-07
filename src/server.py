@@ -4,7 +4,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote
 
-from src.merge import find_pairs
+from src.merge import find_pairs, merge_all
 from src.review import list_cards, load_card, save_card
 
 # Placeholder HTML — replaced with full SPA in a later task
@@ -120,7 +120,27 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_error(404, "Not found")
 
     def do_POST(self):
-        self._send_error(404, "Not found")
+        input_dir = self.server.input_dir
+        output_dir = self.server.output_dir
+
+        if self.path == "/api/merge":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length) if content_length else b"{}"
+            try:
+                options = json.loads(body)
+            except json.JSONDecodeError:
+                options = {}
+
+            force = options.get("force", False)
+            pairs, pairing_errors = find_pairs(input_dir)
+            ok_count, skipped, merge_errors = merge_all(pairs, output_dir, force=force)
+            self._send_json({
+                "ok": ok_count,
+                "skipped": skipped,
+                "errors": pairing_errors + merge_errors,
+            })
+        else:
+            self._send_error(404, "Not found")
 
 
 def make_server(json_dir: Path, input_dir: Path, output_dir: Path, port: int = 0) -> HTTPServer:

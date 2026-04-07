@@ -5,6 +5,7 @@ from urllib.error import HTTPError
 from urllib.request import urlopen, Request
 
 import pytest
+from PIL import Image
 
 
 def _start_test_server(json_dir, input_dir, output_dir, port=0):
@@ -241,5 +242,84 @@ def test_api_merge_pairs_shows_already_merged(tmp_path):
         resp = urlopen(f"{base}/api/merge/pairs")
         data = json.loads(resp.read())
         assert data["pairs"][0]["merged"] is True
+    finally:
+        server.shutdown()
+
+
+def _create_test_image(path, width=100, height=100, color="red"):
+    """Create a small JPEG image for testing."""
+    img = Image.new("RGB", (width, height), color)
+    img.save(path, "JPEG")
+
+
+def test_api_merge_triggers_stitching(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        req = Request(f"{base}/api/merge", data=b"{}", method="POST",
+                      headers={"Content-Type": "application/json"})
+        resp = urlopen(req)
+        data = json.loads(resp.read())
+        assert data["ok"] == 1
+        assert data["errors"] == []
+        assert (output_dir / "Card A.jpeg").exists()
+    finally:
+        server.shutdown()
+
+
+def test_api_merge_skips_already_merged(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+    # Pre-existing merged file
+    _create_test_image(output_dir / "Card A.jpeg", color="green")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        req = Request(f"{base}/api/merge", data=b"{}", method="POST",
+                      headers={"Content-Type": "application/json"})
+        resp = urlopen(req)
+        data = json.loads(resp.read())
+        assert data["ok"] == 0
+        assert data["skipped"] == 1
+    finally:
+        server.shutdown()
+
+
+def test_api_merge_with_force_reprocesses(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    _create_test_image(input_dir / "Card A.jpeg", color="red")
+    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
+    _create_test_image(output_dir / "Card A.jpeg", color="green")
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        req = Request(f"{base}/api/merge", data=json.dumps({"force": True}).encode(),
+                      method="POST", headers={"Content-Type": "application/json"})
+        resp = urlopen(req)
+        data = json.loads(resp.read())
+        assert data["ok"] == 1
+        assert data["skipped"] == 0
     finally:
         server.shutdown()
