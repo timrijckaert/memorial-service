@@ -1,134 +1,27 @@
 # src/main.py
-import argparse
 from pathlib import Path
 import webbrowser
 
-from src.merge import find_pairs, merge_all
-from src.extract import extract_all, _make_gemini_client
 from src.server import make_server
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Memorial card processing pipeline")
-    parser.add_argument(
-        "command",
-        nargs="?",
-        default="serve",
-        choices=["merge", "extract", "all", "serve"],
-        help="Which phase to run (default: serve)",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Reprocess all pairs, even if output already exists",
-    )
-    args = parser.parse_args()
-
     script_dir = Path(__file__).resolve().parent.parent
     input_dir = script_dir / "input"
     output_dir = script_dir / "output"
-    text_dir = output_dir / "text"
     json_dir = output_dir / "json"
-    conflicts_dir = output_dir / "date_conflicts"
-    prompts_dir = script_dir / "prompts"
-    config_path = script_dir / "config.json"
 
-    # --- Serve (web UI) ---
-    if args.command == "serve":
-        input_dir.mkdir(exist_ok=True)
-        output_dir.mkdir(exist_ok=True)
-        json_dir.mkdir(exist_ok=True)
-
-        server = make_server(json_dir, input_dir, output_dir)
-        port = server.server_address[1]
-        url = f"http://localhost:{port}"
-        print(f"Memorial Card Digitizer running at {url}")
-        print("Press Ctrl+C to stop.")
-        webbrowser.open(url)
-        server.serve_forever()
-        return
-
-    if not input_dir.exists():
-        input_dir.mkdir()
-        print(f"Created {input_dir}/ — drop your scans there and run again.")
-        return
-
-    pairs, pairing_errors = find_pairs(input_dir)
-
-    if not pairs and not pairing_errors:
-        print("No scans found in input/. Drop front + back JPEG pairs there and run again.")
-        return
-
+    input_dir.mkdir(exist_ok=True)
     output_dir.mkdir(exist_ok=True)
-    text_dir.mkdir(exist_ok=True)
     json_dir.mkdir(exist_ok=True)
 
-    total = len(pairs)
-    print(f"Found {total} pair{'s' if total != 1 else ''} in input/")
-
-    all_errors: list[str] = list(pairing_errors)
-    ok_count = 0
-    merge_skipped = 0
-    text_count = 0
-    verify_count = 0
-    interpret_count = 0
-    extract_skipped = 0
-
-    # --- Merge phase ---
-    if args.command in ("merge", "all"):
-        print("\n--- Merge ---")
-        ok_count, merge_skipped, merge_errors = merge_all(pairs, output_dir, force=args.force)
-        all_errors.extend(merge_errors)
-
-    # --- Extract phase ---
-    if args.command in ("extract", "all"):
-        # Load prompt files
-        system_prompt_path = prompts_dir / "extract_person_system.txt"
-        user_template_path = prompts_dir / "extract_person_user.txt"
-        system_prompt = None
-        user_template = None
-        if system_prompt_path.exists() and user_template_path.exists():
-            system_prompt = system_prompt_path.read_text()
-            user_template = user_template_path.read_text()
-        else:
-            print(f"Warning: prompt files not found in {prompts_dir} — skipping interpretation")
-
-        # Create Gemini client
-        client = None
-        if system_prompt:
-            if config_path.exists():
-                try:
-                    client = _make_gemini_client(config_path)
-                except Exception as e:
-                    print(f"Warning: Failed to create Gemini client ({e}) — skipping LLM steps")
-            else:
-                print(f"Warning: {config_path} not found — skipping LLM steps")
-
-        print("\n--- Extract ---")
-        text_count, verify_count, interpret_count, extract_skipped, _, extract_errors = extract_all(
-            pairs, text_dir, json_dir, conflicts_dir,
-            system_prompt, user_template, client, force=args.force,
-        )
-        all_errors.extend(extract_errors)
-
-    # --- Summary ---
-    parts = []
-    if args.command in ("merge", "all"):
-        skip_note = f" ({merge_skipped} skipped)" if merge_skipped else ""
-        parts.append(f"{ok_count} merged{skip_note}")
-    if args.command in ("extract", "all"):
-        skip_note = f" ({extract_skipped} skipped)" if extract_skipped else ""
-        parts.append(f"{text_count} text extracted{skip_note}")
-        parts.append(f"{verify_count} date{'s' if verify_count != 1 else ''} corrected")
-        parts.append(f"{interpret_count} interpreted")
-    parts.append(f"{len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
-
-    print(f"\nDone: {', '.join(parts)}")
-
-    if all_errors:
-        print(f"\nCould not process:")
-        for error in all_errors:
-            print(f"  - {error}")
+    server = make_server(json_dir, input_dir, output_dir)
+    port = server.server_address[1]
+    url = f"http://localhost:{port}"
+    print(f"Memorial Card Digitizer running at {url}")
+    print("Press Ctrl+C to stop.")
+    webbrowser.open(url)
+    server.serve_forever()
 
 
 if __name__ == "__main__":
