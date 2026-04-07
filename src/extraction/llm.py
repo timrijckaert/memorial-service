@@ -209,8 +209,8 @@ def _strip_code_fences(text: str) -> str:
     """Remove surrounding markdown code fences from *text*, if present."""
     text = text.strip()
     if text.startswith("```"):
-        first_newline = text.index("\n")
-        text = text[first_newline + 1:]
+        lines = text.splitlines()
+        text = "\n".join(lines[1:])
     if text.endswith("```"):
         text = text[:-3]
     return text.strip()
