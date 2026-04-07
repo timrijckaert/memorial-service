@@ -67,6 +67,83 @@ def read_image_metadata(image_path: Path) -> dict:
     }
 
 
+_AUTO_CONFIRM_THRESHOLD = 80
+_MIN_PAIR_THRESHOLD = 20
+
+
+def scan_and_match(
+    input_dir: Path,
+    auto_confirm_threshold: int = _AUTO_CONFIRM_THRESHOLD,
+    min_pair_threshold: int = _MIN_PAIR_THRESHOLD,
+) -> dict:
+    """Scan input directory and return fuzzy-matched pairs with metadata.
+
+    Returns dict with:
+        pairs: list of {image_a, image_b, score, status}
+        unmatched: list of {filename, width, height, dpi, file_size_bytes}
+    """
+    files = [
+        f for f in input_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS
+    ]
+
+    if not files:
+        return {"pairs": [], "unmatched": []}
+
+    # Read metadata and normalize names for all files
+    file_info = {}
+    for f in files:
+        file_info[f.name] = {
+            "path": f,
+            "normalized": normalize_filename(f.name),
+            "metadata": read_image_metadata(f),
+        }
+
+    # Build similarity matrix (upper triangle only)
+    names = list(file_info.keys())
+    scores: list[tuple[int, str, str]] = []
+
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            name_a, name_b = names[i], names[j]
+            score = similarity_score(
+                file_info[name_a]["normalized"],
+                file_info[name_b]["normalized"],
+            )
+            if score >= min_pair_threshold:
+                scores.append((score, name_a, name_b))
+
+    # Greedy pairing: highest score first
+    scores.sort(reverse=True)
+    paired: set[str] = set()
+    pairs = []
+
+    for score, name_a, name_b in scores:
+        if name_a in paired or name_b in paired:
+            continue
+        status = "auto_confirmed" if score >= auto_confirm_threshold else "suggested"
+        pairs.append({
+            "image_a": file_info[name_a]["metadata"],
+            "image_b": file_info[name_b]["metadata"],
+            "score": score,
+            "status": status,
+        })
+        paired.add(name_a)
+        paired.add(name_b)
+
+    # Unmatched: everything not paired
+    unmatched = [
+        file_info[name]["metadata"]
+        for name in names
+        if name not in paired
+    ]
+
+    # Sort pairs by score ascending (lowest first for UI)
+    pairs.sort(key=lambda p: p["score"])
+
+    return {"pairs": pairs, "unmatched": unmatched}
+
+
 def find_pairs(input_dir: Path) -> tuple[list[tuple[Path, Path]], list[str]]:
     """Find front/back pairs in input_dir based on filename convention.
 

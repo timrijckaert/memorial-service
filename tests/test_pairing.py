@@ -87,3 +87,85 @@ def test_read_image_metadata_with_dpi(tmp_path):
     meta = read_image_metadata(img_path)
 
     assert meta["dpi"] == 300
+
+
+from src.images.pairing import scan_and_match
+
+
+def _make_image(path, width=100, height=100):
+    """Helper: create a minimal JPEG at the given path."""
+    Image.new("RGB", (width, height)).save(path, "JPEG")
+
+
+def test_scan_and_match_obvious_pair(tmp_path):
+    _make_image(tmp_path / "Person A bidprentje 1920.jpeg")
+    _make_image(tmp_path / "Person A bidprentje 1920 1.jpeg")
+
+    result = scan_and_match(tmp_path)
+
+    assert len(result["pairs"]) == 1
+    assert len(result["unmatched"]) == 0
+    pair = result["pairs"][0]
+    assert pair["score"] > 80
+    assert pair["status"] == "auto_confirmed"
+
+
+def test_scan_and_match_low_score_not_auto_confirmed(tmp_path):
+    _make_image(tmp_path / "aaa bbb ccc.jpeg")
+    _make_image(tmp_path / "xxx yyy zzz.jpeg")
+
+    result = scan_and_match(tmp_path)
+
+    # Score too low to pair — both should be unmatched
+    assert len(result["unmatched"]) == 2
+    assert len(result["pairs"]) == 0
+
+
+def test_scan_and_match_multiple_pairs_greedy(tmp_path):
+    _make_image(tmp_path / "De Smet Maria 1945.jpeg")
+    _make_image(tmp_path / "De Smet Maria 1945 1.jpeg")
+    _make_image(tmp_path / "Pieters Jan 1952.jpeg")
+    _make_image(tmp_path / "Pieters Jan 1952 1.jpeg")
+
+    result = scan_and_match(tmp_path)
+
+    assert len(result["pairs"]) == 2
+    assert len(result["unmatched"]) == 0
+    names = {
+        (p["image_a"]["filename"], p["image_b"]["filename"])
+        for p in result["pairs"]
+    }
+    assert ("De Smet Maria 1945.jpeg", "De Smet Maria 1945 1.jpeg") in names or \
+           ("De Smet Maria 1945 1.jpeg", "De Smet Maria 1945.jpeg") in names
+
+
+def test_scan_and_match_odd_image_out(tmp_path):
+    _make_image(tmp_path / "Person A 1920.jpeg")
+    _make_image(tmp_path / "Person A 1920 1.jpeg")
+    _make_image(tmp_path / "orphan_scan.jpeg")
+
+    result = scan_and_match(tmp_path)
+
+    assert len(result["pairs"]) == 1
+    assert len(result["unmatched"]) == 1
+    assert result["unmatched"][0]["filename"] == "orphan_scan.jpeg"
+
+
+def test_scan_and_match_empty_dir(tmp_path):
+    result = scan_and_match(tmp_path)
+
+    assert result["pairs"] == []
+    assert result["unmatched"] == []
+
+
+def test_scan_and_match_includes_metadata(tmp_path):
+    _make_image(tmp_path / "Card.jpeg", width=200, height=300)
+    _make_image(tmp_path / "Card 1.jpeg", width=200, height=300)
+
+    result = scan_and_match(tmp_path)
+
+    pair = result["pairs"][0]
+    assert pair["image_a"]["width"] == 200
+    assert pair["image_a"]["height"] == 300
+    assert pair["image_b"]["width"] == 200
+    assert pair["image_b"]["height"] == 300
