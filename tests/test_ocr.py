@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw, ImageFont
 
-from src.merge import extract_text
+from src.extract import extract_text
 
 pytestmark = pytest.mark.skipif(
     shutil.which("tesseract") is None,

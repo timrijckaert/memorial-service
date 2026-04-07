@@ -60,5 +60,5 @@ if [ ! -d "$VENV_DIR" ]; then
     echo ""
 fi
 
-# Run the merge script
-"$VENV_DIR/bin/python" "$SCRIPT_DIR/src/merge.py"
+# Run the pipeline
+"$VENV_DIR/bin/python" "$SCRIPT_DIR/src/main.py" "$@"

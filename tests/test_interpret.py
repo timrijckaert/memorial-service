@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from src.merge import interpret_text
+from src.extract import interpret_text
 
 
 SAMPLE_LLM_RESPONSE = json.dumps({
@@ -38,7 +38,7 @@ def _mock_chat_response(content: str):
     return mock_response
 
 
-@patch("src.merge.ollama.chat")
+@patch("src.extract.ollama.chat")
 def test_interpret_text_creates_json_file(mock_chat, tmp_path):
     mock_chat.return_value = _mock_chat_response(SAMPLE_LLM_RESPONSE)
 
@@ -53,7 +53,7 @@ def test_interpret_text_creates_json_file(mock_chat, tmp_path):
     assert output.exists()
 
 
-@patch("src.merge.ollama.chat")
+@patch("src.extract.ollama.chat")
 def test_interpret_text_json_has_required_keys(mock_chat, tmp_path):
     mock_chat.return_value = _mock_chat_response(SAMPLE_LLM_RESPONSE)
 
@@ -71,7 +71,7 @@ def test_interpret_text_json_has_required_keys(mock_chat, tmp_path):
     assert "source" in result
 
 
-@patch("src.merge.ollama.chat")
+@patch("src.extract.ollama.chat")
 def test_interpret_text_includes_source_filenames(mock_chat, tmp_path):
     mock_chat.return_value = _mock_chat_response(SAMPLE_LLM_RESPONSE)
 
@@ -88,7 +88,7 @@ def test_interpret_text_includes_source_filenames(mock_chat, tmp_path):
     assert result["source"]["back_text_file"] == "card 1_back.txt"
 
 
-@patch("src.merge.ollama.chat")
+@patch("src.extract.ollama.chat")
 def test_interpret_text_substitutes_placeholders(mock_chat, tmp_path):
     mock_chat.return_value = _mock_chat_response(SAMPLE_LLM_RESPONSE)
 
@@ -108,7 +108,7 @@ def test_interpret_text_substitutes_placeholders(mock_chat, tmp_path):
     assert "{back_text}" not in prompt
 
 
-@patch("src.merge.ollama.chat")
+@patch("src.extract.ollama.chat")
 def test_interpret_text_invalid_json_raises(mock_chat, tmp_path):
     mock_chat.return_value = _mock_chat_response("not valid json at all")
 

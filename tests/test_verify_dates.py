@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import pytest
 
-from src.merge import verify_dates
+from src.extract import verify_dates
 
 
 def _make_image_with_text(tmp_path: Path, text: str, filename: str = "card.jpeg") -> Path:
@@ -25,8 +25,8 @@ def _mock_chat_response(content: str):
     return mock_response
 
 
-@patch("src.merge.pytesseract.image_to_data")
-@patch("src.merge.ollama.chat")
+@patch("src.extract.pytesseract.image_to_data")
+@patch("src.extract.ollama.chat")
 def test_verify_dates_corrects_misread_year(mock_chat, mock_data, tmp_path):
     """When LLM reads a different year than OCR, the text file is updated."""
     image_path = _make_image_with_text(tmp_path, "overleden 27 Februari 1944")
@@ -51,8 +51,8 @@ def test_verify_dates_corrects_misread_year(mock_chat, mock_data, tmp_path):
     assert "1944" not in text_path.read_text()
 
 
-@patch("src.merge.pytesseract.image_to_data")
-@patch("src.merge.ollama.chat")
+@patch("src.extract.pytesseract.image_to_data")
+@patch("src.extract.ollama.chat")
 def test_verify_dates_saves_conflict_image(mock_chat, mock_data, tmp_path):
     """When OCR and LLM disagree, a crop image is saved for manual review."""
     image_path = _make_image_with_text(tmp_path, "1944", filename="card_back.jpeg")
@@ -79,8 +79,8 @@ def test_verify_dates_saves_conflict_image(mock_chat, mock_data, tmp_path):
     assert "llm1941" in conflict_files[0].name
 
 
-@patch("src.merge.pytesseract.image_to_data")
-@patch("src.merge.ollama.chat")
+@patch("src.extract.pytesseract.image_to_data")
+@patch("src.extract.ollama.chat")
 def test_verify_dates_no_correction_when_matching(mock_chat, mock_data, tmp_path):
     """When LLM and OCR agree, text is unchanged."""
     image_path = _make_image_with_text(tmp_path, "geboren 15 Juni 1852")
@@ -103,8 +103,8 @@ def test_verify_dates_no_correction_when_matching(mock_chat, mock_data, tmp_path
     assert text_path.read_text() == "geboren 15 Juni 1852"
 
 
-@patch("src.merge.pytesseract.image_to_data")
-@patch("src.merge.ollama.chat")
+@patch("src.extract.pytesseract.image_to_data")
+@patch("src.extract.ollama.chat")
 def test_verify_dates_rejects_llm_year_outside_range(mock_chat, mock_data, tmp_path):
     """When LLM returns a year outside 1800-1950, the OCR value is kept."""
     image_path = _make_image_with_text(tmp_path, "overleden 1926")
@@ -127,7 +127,7 @@ def test_verify_dates_rejects_llm_year_outside_range(mock_chat, mock_data, tmp_p
     assert text_path.read_text() == "overleden 1926"
 
 
-@patch("src.merge.pytesseract.image_to_data")
+@patch("src.extract.pytesseract.image_to_data")
 def test_verify_dates_no_years_skips_llm(mock_data, tmp_path):
     """When no year-like words are found, no LLM calls are made."""
     image_path = _make_image_with_text(tmp_path, "no dates here")
@@ -148,8 +148,8 @@ def test_verify_dates_no_years_skips_llm(mock_data, tmp_path):
     assert corrections == []
 
 
-@patch("src.merge.pytesseract.image_to_data")
-@patch("src.merge.ollama.chat")
+@patch("src.extract.pytesseract.image_to_data")
+@patch("src.extract.ollama.chat")
 def test_verify_dates_ignores_invalid_llm_response(mock_chat, mock_data, tmp_path):
     """When LLM returns non-year text, the OCR value is kept."""
     image_path = _make_image_with_text(tmp_path, "overleden 1944")
@@ -172,8 +172,8 @@ def test_verify_dates_ignores_invalid_llm_response(mock_chat, mock_data, tmp_pat
     assert text_path.read_text() == "overleden 1944"
 
 
-@patch("src.merge.pytesseract.image_to_data")
-@patch("src.merge.ollama.chat")
+@patch("src.extract.pytesseract.image_to_data")
+@patch("src.extract.ollama.chat")
 def test_verify_dates_cleans_up_crop_files(mock_chat, mock_data, tmp_path):
     """Temporary crop files are deleted after verification."""
     image_path = _make_image_with_text(tmp_path, "1913")
