@@ -64,34 +64,15 @@ def _make_gemini_client(config_path: Path) -> genai.Client:
     return genai.Client(api_key=config["gemini_api_key"])
 
 
-def _clean_ocr_text(raw: str) -> str:
-    """Clean raw OCR output: rejoin hyphenated words, remove noise lines, collapse whitespace."""
-    # Rejoin words split across lines with a hyphen
-    text = re.sub(r"-\n\s*", "", raw)
-    # Collapse multiple blank lines into one
-    text = re.sub(r"\n{3,}", "\n\n", text)
-
-    cleaned_lines = []
-    for line in text.split("\n"):
-        line = line.strip()
-        # Drop lines without a real word (3+ letters) — filters decorative noise
-        if line and not re.search(r"[a-zA-ZÀ-ÿ]{3,}", line):
-            continue
-        cleaned_lines.append(line)
-
-    return "\n".join(cleaned_lines).strip()
-
-
 def extract_text(image_path: Path, output_path: Path) -> None:
     """Extract text from an image using Tesseract OCR and write to a text file.
 
-    Uses Dutch (nld) language model. Cleans OCR artifacts (noise lines,
-    broken hyphenation, excessive whitespace). Creates the output file even
+    Uses Dutch (nld) language model. Creates the output file even
     if no text is detected. Raises on failure (caller handles).
     """
     image = Image.open(image_path)
     raw = pytesseract.image_to_string(image, lang="nld")
-    output_path.write_text(_clean_ocr_text(raw))
+    output_path.write_text(raw)
 
 
 def verify_dates(image_path: Path, text_path: Path, client: genai.Client, conflicts_dir: Path | None = None) -> list[str]:
@@ -290,59 +271,3 @@ def _extract_one(
             result["errors"].append(f"{front_path.name} interpret: {e}")
 
     return result
-
-
-def extract_all(
-    pairs: list[tuple[Path, Path]],
-    text_dir: Path,
-    json_dir: Path,
-    conflicts_dir: Path,
-    system_prompt: str | None,
-    user_template: str | None,
-    client: genai.Client | None,
-    force: bool = False,
-) -> tuple[int, int, int, int, int, list[str]]:
-    """Run extraction on all pairs. Returns (text_count, verify_count, interpret_count, skipped, processed, errors)."""
-    to_process = []
-    skipped = 0
-
-    for front_path, back_path in pairs:
-        json_output_path = json_dir / f"{front_path.stem}.json"
-        if not force and json_output_path.exists():
-            skipped += 1
-        else:
-            to_process.append((front_path, back_path))
-
-    text_count = 0
-    verify_count = 0
-    interpret_count = 0
-    all_errors: list[str] = []
-    total = len(to_process)
-    width = len(str(total)) if total else 1
-
-    if skipped:
-        print(f"Skipping {skipped} already extracted")
-
-    for idx, (front_path, back_path) in enumerate(to_process, 1):
-        result = _extract_one(
-            front_path, back_path,
-            text_dir, json_dir, conflicts_dir,
-            client, system_prompt, user_template,
-        )
-
-        for fix in result["date_fixes"]:
-            print(f"        {fix}")
-
-        pair_ok = not result["errors"]
-        name = result["front_name"]
-        if pair_ok:
-            print(f"  [{idx:>{width}}/{total}] {name}  OK")
-        else:
-            print(f"  [{idx:>{width}}/{total}] {name}  ERROR")
-
-        text_count += result["ocr"]
-        verify_count += result["verify_corrections"]
-        interpret_count += result["interpreted"]
-        all_errors.extend(result["errors"])
-
-    return text_count, verify_count, interpret_count, skipped, total, all_errors

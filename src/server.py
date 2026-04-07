@@ -153,7 +153,6 @@ APP_HTML = """\
     <button id="extract-btn" class="btn btn-primary" onclick="triggerExtractSelected()">Extract Selected</button>
     <button id="cancel-btn" class="btn btn-danger" onclick="cancelExtract()" style="display:none;">Cancel</button>
     <label style="cursor:pointer;"><input type="checkbox" id="select-all-extract" onchange="toggleSelectAll(this.checked)"> Select all</label>
-    <label><input type="checkbox" id="force-extract"> Force re-extract</label>
     <span id="extract-count" style="color:#888; font-size:14px;"></span>
   </div>
   <div id="extract-error" class="extract-error-msg" style="display:none;"></div>
@@ -397,17 +396,12 @@ function toggleSelectAll(checked) {
 async function triggerExtractSelected() {
   const cards = getSelectedCards();
   if (cards.length === 0) return;
-  // Auto-force if any selected card is already done
-  const doneCards = new Set(Array.from(document.querySelectorAll('.extract-check:checked'))
-    .filter(cb => cb.closest('.card-item').querySelector('.icon.done'))
-    .map(cb => cb.dataset.card));
-  const force = document.getElementById('force-extract').checked || doneCards.size > 0;
   const errorEl = document.getElementById('extract-error');
   errorEl.style.display = 'none';
   const resp = await fetch('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force: force, cards: cards }),
+    body: JSON.stringify({ cards: cards }),
   });
   const data = await resp.json();
   if (data.status === 'already_running') return;
@@ -712,7 +706,7 @@ class ExtractionWorker:
             }
 
     def start(self, pairs, text_dir, json_dir, conflicts_dir,
-              system_prompt, user_template, client, force):
+              system_prompt, user_template, client):
         with self._lock:
             if self._state["status"] == "running":
                 return False
@@ -729,7 +723,7 @@ class ExtractionWorker:
         thread = threading.Thread(
             target=self._run,
             args=(pairs, text_dir, json_dir, conflicts_dir,
-                  system_prompt, user_template, client, force),
+                  system_prompt, user_template, client),
             daemon=True,
         )
         thread.start()
@@ -742,7 +736,7 @@ class ExtractionWorker:
                 self._state["status"] = "cancelling"
 
     def _run(self, pairs, text_dir, json_dir, conflicts_dir,
-             system_prompt, user_template, client, force):
+             system_prompt, user_template, client):
         for front_path, back_path in pairs:
             if self._cancel.is_set():
                 with self._lock:
@@ -755,14 +749,6 @@ class ExtractionWorker:
                 if card_name in self._state["queue"]:
                     self._state["queue"].remove(card_name)
                 self._state["current"] = {"card_id": card_name, "step": "ocr_front"}
-
-            # Skip if already extracted and not forcing
-            json_output = json_dir / f"{front_path.stem}.json"
-            if not force and json_output.exists():
-                with self._lock:
-                    self._state["done"].append(card_name)
-                    self._state["current"] = None
-                continue
 
             def _on_step(step):
                 with self._lock:
@@ -936,7 +922,6 @@ class AppHandler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 options = {}
 
-            force = options.get("force", False)
             cards_filter = options.get("cards", None)
             pairs, _ = find_pairs(input_dir)
             if cards_filter:
@@ -974,7 +959,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
             started = self.server.worker.start(
                 pairs, text_dir, json_dir, conflicts_dir,
-                system_prompt, user_template, client, force,
+                system_prompt, user_template, client,
             )
             if started:
                 self._send_json({"status": "started"})
