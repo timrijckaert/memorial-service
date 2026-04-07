@@ -1,5 +1,5 @@
 import json
-from src.review import list_cards, load_card, save_card
+from src.review.cards import list_cards, load_card, save_card
 
 
 def test_list_cards_returns_sorted_stems(tmp_path):

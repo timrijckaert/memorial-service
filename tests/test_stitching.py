@@ -1,7 +1,7 @@
 # tests/test_stitching.py
 from pathlib import Path
 from PIL import Image
-from src.merge import stitch_pair
+from src.images.stitching import stitch_pair
 
 
 def _make_image(path: Path, width: int, height: int, color: str) -> Path:

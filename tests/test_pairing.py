@@ -1,6 +1,6 @@
 # tests/test_pairing.py
 from pathlib import Path
-from src.merge import find_pairs
+from src.images.pairing import find_pairs
 
 
 def test_find_pairs_matches_front_and_back(tmp_path):

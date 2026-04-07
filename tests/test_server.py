@@ -9,10 +9,12 @@ from urllib.request import urlopen, Request
 import pytest
 from PIL import Image
 
+from src.extraction.pipeline import ExtractionResult
+
 
 def _start_test_server(json_dir, input_dir, output_dir, port=0):
     """Start an AppServer on a random port and return (server, base_url)."""
-    from src.server import make_server
+    from src.web.server import make_server
 
     server = make_server(json_dir, input_dir, output_dir, port=port)
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -361,15 +363,12 @@ def test_api_extract_starts_and_completes(tmp_path):
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
-        with patch("src.server._extract_one") as mock_extract:
-            mock_extract.return_value = {
-                "front_name": "Card A.jpeg",
-                "ocr": True,
-                "verify_corrections": 0,
-                "interpreted": True,
-                "errors": [],
-                "date_fixes": [],
-            }
+        with patch("src.web.worker.extract_one") as mock_extract:
+            mock_extract.return_value = ExtractionResult(
+                front_name="Card A.jpeg",
+                ocr_done=True,
+                interpreted=True,
+            )
 
             req = Request(f"{base}/api/extract", data=b"{}", method="POST",
                           headers={"Content-Type": "application/json"})
@@ -411,16 +410,13 @@ def test_api_extract_cancel_stops_worker(tmp_path):
     try:
         def slow_extract(*args, **kwargs):
             time.sleep(0.5)
-            return {
-                "front_name": "test.jpeg",
-                "ocr": True,
-                "verify_corrections": 0,
-                "interpreted": True,
-                "errors": [],
-                "date_fixes": [],
-            }
+            return ExtractionResult(
+                front_name="test.jpeg",
+                ocr_done=True,
+                interpreted=True,
+            )
 
-        with patch("src.server._extract_one", side_effect=slow_extract):
+        with patch("src.web.worker.extract_one", side_effect=slow_extract):
             # Start extraction
             req = Request(f"{base}/api/extract", data=b"{}", method="POST",
                           headers={"Content-Type": "application/json"})

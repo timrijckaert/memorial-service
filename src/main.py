@@ -2,7 +2,7 @@
 from pathlib import Path
 import webbrowser
 
-from src.server import make_server
+from src.web import make_server
 
 
 def main() -> None:
