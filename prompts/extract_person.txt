@@ -12,6 +12,11 @@ IMPORTANT RULES:
 - Add a note whenever you deduce a value, correct an OCR error, or are uncertain about an extraction.
 - For spouse: extract the full name as a single string. Set to null if not mentioned.
 - For parents: extract father and mother names separately. Set the parents object to null if neither parent is mentioned. Individual parent fields can be null if only one is mentioned.
+- CRITICAL — distinguishing parents from spouses on Dutch memorial cards:
+  - "zoon van" / "dochter van" / "kind van" = "son of" / "daughter of" / "child of" → these introduce PARENTS, NOT a spouse.
+  - "echtgenoot van" / "echtgenote van" / "man van" / "vrouw van" = "husband of" / "wife of" → these introduce a SPOUSE.
+  - "weduwnaar van" / "weduwe van" = "widower of" / "widow of" → these introduce a DECEASED SPOUSE.
+  - Do NOT confuse a parent's name for a spouse. Pay close attention to the keyword preceding the name.
 - For age_at_death: ONLY populate this field when either birth_date or death_date is missing and you are using the age to deduce the missing date. If both birth_date and death_date are explicitly stated, set age_at_death to null — it is redundant.
 
 OUTPUT FIELDS:
