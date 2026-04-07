@@ -9,13 +9,13 @@ async function showSection(name) {
   const tab = document.querySelector('.nav-tab[href="#' + name + '"]');
   if (tab) tab.classList.add('active');
 
-  if (name === 'merge') await loadMergePairs();
+  if (name === 'match') await loadMatchState();
   if (name === 'extract') await loadExtractCards();
   if (name === 'review') await initReview();
 }
 
 async function handleHash() {
-  const hash = location.hash.slice(1) || 'merge';
+  const hash = location.hash.slice(1) || 'match';
   if (hash.startsWith('review/')) {
     const cardId = decodeURIComponent(hash.slice(7));
     await showSection('review');
@@ -27,88 +27,283 @@ async function handleHash() {
 
 window.addEventListener('hashchange', handleHash);
 
-/* ---- Merge ---- */
-async function loadMergePairs() {
-  const resp = await fetch('/api/merge/pairs');
-  const data = await resp.json();
-  const grid = document.getElementById('pairs-grid');
-  const countEl = document.getElementById('merge-pair-count');
-  grid.innerHTML = '';
-  countEl.textContent = data.pairs.length + ' pair' + (data.pairs.length !== 1 ? 's' : '') + ' detected';
+/* ---- Match ---- */
+let matchData = null;
+let findMatchFilename = null;
+let findMatchCandidates = [];
 
-  data.pairs.forEach(pair => {
-    const card = document.createElement('div');
-    card.className = 'pair-card' + (pair.merged ? ' merged' : '');
-    const imgs = document.createElement('div');
-    imgs.className = 'pair-images';
-
-    if (pair.merged) {
-      const img = document.createElement('img');
-      img.className = 'merged-img';
-      img.src = '/output-images/' + encodeURIComponent(pair.front);
-      imgs.appendChild(img);
-    } else {
-      const frontImg = document.createElement('img');
-      frontImg.src = '/images/' + encodeURIComponent(pair.front);
-      const backImg = document.createElement('img');
-      backImg.src = '/images/' + encodeURIComponent(pair.back);
-      imgs.appendChild(frontImg);
-      imgs.appendChild(backImg);
-    }
-
-    const name = document.createElement('div');
-    name.className = 'pair-name';
-    name.innerHTML = pair.name + (pair.merged ? ' <span class="status ok">&#10003; merged</span>' : '');
-
-    card.appendChild(imgs);
-    card.appendChild(name);
-    grid.appendChild(card);
-  });
-
-  data.errors.forEach(err => {
-    const card = document.createElement('div');
-    card.className = 'pair-card error';
-    const imgs = document.createElement('div');
-    imgs.className = 'pair-images';
-    const ph = document.createElement('div');
-    ph.className = 'placeholder missing';
-    ph.textContent = 'missing';
-    imgs.appendChild(ph);
-    const name = document.createElement('div');
-    name.className = 'pair-name';
-    name.style.color = '#e74c3c';
-    name.textContent = err;
-    card.appendChild(imgs);
-    card.appendChild(name);
-    grid.appendChild(card);
-  });
-}
-
-async function triggerMerge() {
-  const btn = document.getElementById('merge-btn');
+async function scanImages() {
+  var btn = document.getElementById('scan-btn');
   btn.disabled = true;
-  btn.textContent = 'Merging...';
+  btn.textContent = 'Scanning...';
 
-  const resp = await fetch('/api/merge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-  const data = await resp.json();
-
-  const summary = document.getElementById('merge-summary');
-  summary.style.display = 'block';
-  let parts = [];
-  if (data.ok > 0) parts.push('<span class="ok">&#10003; ' + data.ok + ' merged</span>');
-  if (data.skipped > 0) parts.push('<span class="skip">' + data.skipped + ' skipped</span>');
-  if (data.errors.length > 0) parts.push('<span class="err">&#10007; ' + data.errors.length + ' error(s)</span>');
-  let html = parts.join(' &middot; ');
-  if (data.errors.length > 0) {
-    html += '<ul style="margin-top:8px; padding-left:20px; font-size:13px; color:#e74c3c;">';
-    data.errors.forEach(e => { html += '<li>' + e.replace(/</g, '&lt;') + '</li>'; });
-    html += '</ul>';
-  }
-  summary.innerHTML = html;
+  var resp = await fetch('/api/match/scan');
+  matchData = await resp.json();
 
   btn.disabled = false;
-  btn.textContent = 'Merge All';
-  loadMergePairs();
+  btn.textContent = 'Re-scan';
+  renderMatchUI();
+}
+
+async function loadMatchState() {
+  var resp = await fetch('/api/match/state');
+  var data = await resp.json();
+  if (data.pairs.length > 0 || data.unmatched.length > 0) {
+    matchData = data;
+    document.getElementById('scan-btn').textContent = 'Re-scan';
+    renderMatchUI();
+  }
+}
+
+function formatFileSize(bytes) {
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return bytes + ' B';
+}
+
+function formatMeta(meta) {
+  var parts = [meta.width + ' \u00d7 ' + meta.height + ' px'];
+  if (meta.dpi) parts.push(meta.dpi + ' DPI');
+  parts.push(formatFileSize(meta.file_size_bytes));
+  return parts.join(' \u00b7 ');
+}
+
+function scoreClass(score) {
+  if (score >= 80) return 'high';
+  if (score >= 50) return 'medium';
+  return 'low';
+}
+
+function escapeAttr(s) {
+  return s.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+}
+
+function renderMatchUI() {
+  if (!matchData) return;
+
+  // Summary
+  var summary = document.getElementById('match-summary');
+  var parts = [];
+  if (matchData.confirmed_count > 0) parts.push('<span class="confirmed">\u2713 ' + matchData.confirmed_count + ' confirmed</span>');
+  if (matchData.needs_review > 0) parts.push('<span class="review">\u26a0 ' + matchData.needs_review + ' needs review</span>');
+  if (matchData.unmatched_count > 0) parts.push('<span class="unmatched-count">\u2717 ' + matchData.unmatched_count + ' unmatched</span>');
+  summary.innerHTML = parts.join(' &middot; ');
+
+  // Show/hide buttons
+  document.getElementById('confirm-all-btn').style.display = matchData.needs_review > 0 ? '' : 'none';
+  document.getElementById('proceed-extract-btn').style.display = matchData.all_resolved ? '' : 'none';
+
+  // Pair list
+  var pairList = document.getElementById('match-pair-list');
+  pairList.innerHTML = '';
+  matchData.pairs.forEach(function(pair) {
+    var row = document.createElement('div');
+    row.className = 'match-pair-row';
+
+    var isConfirmed = pair.status === 'confirmed' || pair.status === 'auto_confirmed';
+    var statusText = isConfirmed ? '\u2713 Confirmed' : 'Needs review';
+    var statusClass = isConfirmed ? 'auto' : 'review';
+
+    var ea = escapeAttr(pair.image_a.filename);
+    var eb = escapeAttr(pair.image_b.filename);
+
+    row.innerHTML =
+      '<div class="match-pair-header">' +
+        '<span class="match-score ' + scoreClass(pair.score) + '">' + pair.score + '%</span>' +
+        '<span class="match-status-text ' + statusClass + '">' + statusText + '</span>' +
+      '</div>' +
+      '<div class="match-pair-images">' +
+        '<div class="match-image-card">' +
+          '<img src="/images/' + encodeURIComponent(pair.image_a.filename) + '" alt="">' +
+          '<div class="match-image-meta">' +
+            '<div class="filename">' + pair.image_a.filename + '</div>' +
+            '<div class="details">' + formatMeta(pair.image_a) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="match-pair-link">\u27f7</div>' +
+        '<div class="match-image-card">' +
+          '<img src="/images/' + encodeURIComponent(pair.image_b.filename) + '" alt="">' +
+          '<div class="match-image-meta">' +
+            '<div class="filename">' + pair.image_b.filename + '</div>' +
+            '<div class="details">' + formatMeta(pair.image_b) + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="match-pair-actions">' +
+        '<button class="btn btn-danger" onclick="unmatchPair(\'' + ea + '\', \'' + eb + '\')">Unmatch</button>' +
+        (isConfirmed ? '' : '<button class="btn btn-success" onclick="confirmPair(\'' + ea + '\', \'' + eb + '\')">Confirm \u2713</button>') +
+      '</div>';
+
+    pairList.appendChild(row);
+  });
+
+  // Unmatched
+  var unmatchedDiv = document.getElementById('match-unmatched');
+  unmatchedDiv.innerHTML = '';
+  if (matchData.unmatched.length > 0) {
+    unmatchedDiv.innerHTML = '<div class="match-unmatched-title">Unmatched Images (' + matchData.unmatched.length + ')</div>';
+    var grid = document.createElement('div');
+    grid.className = 'match-unmatched-grid';
+    matchData.unmatched.forEach(function(img) {
+      var card = document.createElement('div');
+      card.className = 'match-unmatched-card';
+      card.innerHTML =
+        '<img src="/images/' + encodeURIComponent(img.filename) + '" alt="">' +
+        '<div class="filename">' + img.filename + '</div>' +
+        '<div class="details">' + formatMeta(img) + '</div>' +
+        '<button class="btn btn-primary" style="font-size:11px; padding:4px 8px;" onclick="openFindMatch(\'' + escapeAttr(img.filename) + '\')">Find match...</button>';
+      grid.appendChild(card);
+    });
+    unmatchedDiv.appendChild(grid);
+  }
+
+  // Singles
+  if (matchData.singles && matchData.singles.length > 0) {
+    var singlesTitle = document.createElement('div');
+    singlesTitle.className = 'match-unmatched-title';
+    singlesTitle.style.color = '#888';
+    singlesTitle.style.marginTop = '16px';
+    singlesTitle.textContent = 'Singles (' + matchData.singles.length + ')';
+    unmatchedDiv.appendChild(singlesTitle);
+    var sGrid = document.createElement('div');
+    sGrid.className = 'match-unmatched-grid';
+    matchData.singles.forEach(function(name) {
+      var card = document.createElement('div');
+      card.className = 'match-unmatched-card';
+      card.style.borderColor = '#888';
+      card.innerHTML =
+        '<img src="/images/' + encodeURIComponent(name) + '" alt="">' +
+        '<div class="filename">' + name + '</div>' +
+        '<div class="details" style="color:#888;">Marked as single</div>';
+      sGrid.appendChild(card);
+    });
+    unmatchedDiv.appendChild(sGrid);
+  }
+}
+
+async function confirmPair(a, b) {
+  await fetch('/api/match/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_a: a, image_b: b }),
+  });
+  var resp = await fetch('/api/match/state');
+  matchData = await resp.json();
+  renderMatchUI();
+}
+
+async function unmatchPair(a, b) {
+  await fetch('/api/match/unmatch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_a: a, image_b: b }),
+  });
+  var resp = await fetch('/api/match/state');
+  matchData = await resp.json();
+  renderMatchUI();
+}
+
+async function confirmAllPairs() {
+  await fetch('/api/match/confirm-all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  var resp = await fetch('/api/match/state');
+  matchData = await resp.json();
+  renderMatchUI();
+}
+
+async function openFindMatch(filename) {
+  findMatchFilename = filename;
+  document.getElementById('match-pair-list').style.display = 'none';
+  document.getElementById('match-unmatched').style.display = 'none';
+  document.querySelector('.match-controls').style.display = 'none';
+
+  var panel = document.getElementById('find-match-panel');
+  panel.style.display = '';
+  document.getElementById('find-match-name').textContent = filename;
+
+  // Show selected image
+  var selectedDiv = document.getElementById('find-match-selected');
+  selectedDiv.innerHTML =
+    '<img src="/images/' + encodeURIComponent(filename) + '" alt="">' +
+    '<div><div style="font-weight:600;">' + filename + '</div></div>';
+
+  // Fetch scores
+  var resp = await fetch('/api/match/scores', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: filename }),
+  });
+  findMatchCandidates = await resp.json();
+
+  document.getElementById('find-match-filter').value = '';
+  renderFindMatchCandidates(findMatchCandidates);
+}
+
+function renderFindMatchCandidates(candidates) {
+  var container = document.getElementById('find-match-candidates');
+  container.innerHTML = '';
+  candidates.forEach(function(c) {
+    var div = document.createElement('div');
+    div.className = 'find-match-candidate';
+    div.innerHTML =
+      '<img src="/images/' + encodeURIComponent(c.filename) + '" alt="">' +
+      '<div class="info">' +
+        '<div class="filename">' + c.filename + '</div>' +
+        '<div class="details">' + formatMeta(c) + '</div>' +
+      '</div>' +
+      '<div class="score-and-action">' +
+        '<span class="match-score ' + scoreClass(c.score) + '">' + c.score + '%</span>' +
+        '<button class="btn btn-success" style="font-size:11px; padding:3px 10px;" onclick="manualPair(\'' + escapeAttr(findMatchFilename) + '\', \'' + escapeAttr(c.filename) + '\')">Pair</button>' +
+      '</div>';
+    container.appendChild(div);
+  });
+
+  if (candidates.length === 0) {
+    container.innerHTML = '<div style="color:#888; padding:16px; text-align:center;">No other unmatched images</div>';
+  }
+}
+
+function filterFindMatch() {
+  var query = document.getElementById('find-match-filter').value.toLowerCase();
+  var filtered = findMatchCandidates.filter(function(c) {
+    return c.filename.toLowerCase().includes(query);
+  });
+  renderFindMatchCandidates(filtered);
+}
+
+async function manualPair(a, b) {
+  await fetch('/api/match/pair', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_a: a, image_b: b }),
+  });
+  closeFindMatch();
+  var resp = await fetch('/api/match/state');
+  matchData = await resp.json();
+  renderMatchUI();
+}
+
+async function markSingleFromPanel() {
+  await fetch('/api/match/single', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: findMatchFilename }),
+  });
+  closeFindMatch();
+  var resp = await fetch('/api/match/state');
+  matchData = await resp.json();
+  renderMatchUI();
+}
+
+function closeFindMatch() {
+  document.getElementById('find-match-panel').style.display = 'none';
+  document.getElementById('match-pair-list').style.display = '';
+  document.getElementById('match-unmatched').style.display = '';
+  document.querySelector('.match-controls').style.display = '';
+  findMatchFilename = null;
 }
 
 /* ---- Extract ---- */

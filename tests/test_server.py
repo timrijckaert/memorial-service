@@ -501,10 +501,10 @@ def test_html_contains_navigation_tabs(tmp_path):
     try:
         resp = urlopen(f"{base}/")
         body = resp.read().decode()
-        assert "Merge" in body
+        assert "Match" in body
         assert "Extract" in body
         assert "Review" in body
-        assert "#merge" in body
+        assert "#match" in body
         assert "#extract" in body
         assert "#review" in body
     finally:
