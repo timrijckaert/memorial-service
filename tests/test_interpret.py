@@ -16,23 +16,13 @@ SAMPLE_LLM_RESPONSE = json.dumps({
         "birth_place": "Kerksken",
         "death_date": "1913-12-21",
         "death_place": "Kerksken",
-        "age_at_death": 100,
+        "age_at_death": None,
         "spouse": "Amelia Gees",
         "parents": None
     },
-    "confidence": {
-        "first_name": 0.95,
-        "last_name": 0.95,
-        "birth_date": 0.9,
-        "birth_place": 0.9,
-        "death_date": 0.95,
-        "death_place": 0.85,
-        "age_at_death": 0.95,
-        "spouse": 0.9,
-        "parents": None
-    },
     "notes": [
-        "birth_place OCR reads 'Kerkxken', normalized to 'Kerksken'"
+        "birth_place OCR reads 'Kerkxken', normalized to 'Kerksken'",
+        "Both birth and death dates are explicit, age_at_death left null"
     ]
 })
 
@@ -77,7 +67,6 @@ def test_interpret_text_json_has_required_keys(mock_chat, tmp_path):
 
     result = json.loads(output.read_text())
     assert "person" in result
-    assert "confidence" in result
     assert "notes" in result
     assert "source" in result
 

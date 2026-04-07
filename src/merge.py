@@ -1,5 +1,7 @@
 # src/merge.py
 import json
+import os
+import re
 from pathlib import Path
 from PIL import Image
 import ollama
@@ -92,15 +94,34 @@ def stitch_pair(front_path: Path, back_path: Path, output_path: Path) -> None:
     canvas.save(output_path, "JPEG", quality=85)
 
 
+def _clean_ocr_text(raw: str) -> str:
+    """Clean raw OCR output: rejoin hyphenated words, remove noise lines, collapse whitespace."""
+    # Rejoin words split across lines with a hyphen
+    text = re.sub(r"-\n\s*", "", raw)
+    # Collapse multiple blank lines into one
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    cleaned_lines = []
+    for line in text.split("\n"):
+        line = line.strip()
+        # Drop lines without a real word (3+ letters) — filters decorative noise
+        if line and not re.search(r"[a-zA-ZÀ-ÿ]{3,}", line):
+            continue
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines).strip()
+
+
 def extract_text(image_path: Path, output_path: Path) -> None:
     """Extract text from an image using Tesseract OCR and write to a text file.
 
-    Uses Dutch (nld) language model. Creates the output file even if no text
-    is detected. Raises on failure (caller handles).
+    Uses Dutch (nld) language model. Cleans OCR artifacts (noise lines,
+    broken hyphenation, excessive whitespace). Creates the output file even
+    if no text is detected. Raises on failure (caller handles).
     """
     image = Image.open(image_path)
-    text = pytesseract.image_to_string(image, lang="nld")
-    output_path.write_text(text.strip())
+    raw = pytesseract.image_to_string(image, lang="nld")
+    output_path.write_text(_clean_ocr_text(raw))
 
 
 PERSON_SCHEMA = {
@@ -130,33 +151,15 @@ PERSON_SCHEMA = {
                 "death_date", "death_place", "age_at_death", "spouse", "parents",
             ],
         },
-        "confidence": {
-            "type": "object",
-            "properties": {
-                "first_name": {"type": ["number", "null"]},
-                "last_name": {"type": ["number", "null"]},
-                "birth_date": {"type": ["number", "null"]},
-                "birth_place": {"type": ["number", "null"]},
-                "death_date": {"type": ["number", "null"]},
-                "death_place": {"type": ["number", "null"]},
-                "age_at_death": {"type": ["number", "null"]},
-                "spouse": {"type": ["number", "null"]},
-                "parents": {"type": ["number", "null"]},
-            },
-            "required": [
-                "first_name", "last_name", "birth_date", "birth_place",
-                "death_date", "death_place", "age_at_death", "spouse", "parents",
-            ],
-        },
         "notes": {
             "type": "array",
             "items": {"type": "string"},
         },
     },
-    "required": ["person", "confidence", "notes"],
+    "required": ["person", "notes"],
 }
 
-MODEL = "gemma4:e2b"
+MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e4b")
 
 
 def interpret_text(
