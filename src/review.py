@@ -135,8 +135,201 @@ class ReviewHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-# Placeholder — replaced in Task 3
-REVIEW_HTML = "<html><body>Review UI</body></html>"
+REVIEW_HTML = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memorial Card Review</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: #fff; border-bottom: 1px solid #ddd; }
+  .header h1 { font-size: 18px; }
+  .nav { display: flex; gap: 8px; align-items: center; }
+  .nav button { padding: 6px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 14px; }
+  .nav button:hover { background: #eee; }
+  .nav button:disabled { opacity: 0.4; cursor: default; }
+  .counter { font-size: 14px; color: #666; min-width: 80px; text-align: center; }
+  .main { display: flex; height: calc(100vh - 53px); }
+  .image-panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #ddd; background: #222; }
+  .image-toggle { display: flex; background: #333; }
+  .image-toggle button { flex: 1; padding: 8px; border: none; background: #333; color: #aaa; cursor: pointer; font-size: 13px; }
+  .image-toggle button.active { background: #555; color: #fff; }
+  .image-container { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
+  .image-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .form-panel { flex: 1; overflow-y: auto; padding: 24px; background: #fff; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+  .form-group input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+  .form-group input:focus { outline: none; border-color: #4a90d9; }
+  .section-title { font-size: 14px; font-weight: 600; color: #333; margin: 20px 0 12px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
+  .notes-list { list-style: none; padding: 0; }
+  .notes-list li { font-size: 13px; color: #666; padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
+  .approve-btn { width: 100%; padding: 12px; margin-top: 24px; background: #4a90d9; color: #fff; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+  .approve-btn:hover { background: #3a7bc8; }
+  .approve-btn.saved { background: #5cb85c; }
+  .no-image { color: #888; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Memorial Card Review</h1>
+  <div class="nav">
+    <button id="prev-btn" onclick="navigate(-1)">&larr; Previous</button>
+    <span id="counter" class="counter">-</span>
+    <button id="next-btn" onclick="navigate(1)">Next &rarr;</button>
+  </div>
+</div>
+<div class="main">
+  <div class="image-panel">
+    <div class="image-toggle">
+      <button id="front-btn" class="active" onclick="showSide('front')">Front</button>
+      <button id="back-btn" onclick="showSide('back')">Back</button>
+    </div>
+    <div class="image-container">
+      <img id="card-image" src="" alt="Card image">
+      <span id="no-image" class="no-image" style="display:none">No image available</span>
+    </div>
+  </div>
+  <div class="form-panel">
+    <div class="section-title">Person</div>
+    <div class="form-group"><label>First Name</label><input id="f-first_name"></div>
+    <div class="form-group"><label>Last Name</label><input id="f-last_name"></div>
+    <div class="form-group"><label>Birth Date (YYYY-MM-DD)</label><input id="f-birth_date"></div>
+    <div class="form-group"><label>Birth Place</label><input id="f-birth_place"></div>
+    <div class="form-group"><label>Death Date (YYYY-MM-DD)</label><input id="f-death_date"></div>
+    <div class="form-group"><label>Death Place</label><input id="f-death_place"></div>
+    <div class="form-group"><label>Age at Death</label><input id="f-age_at_death" type="number"></div>
+    <div class="form-group"><label>Spouse</label><input id="f-spouse"></div>
+    <div class="section-title">Parents</div>
+    <div class="form-group"><label>Father</label><input id="f-father"></div>
+    <div class="form-group"><label>Mother</label><input id="f-mother"></div>
+    <div class="section-title">Notes (from LLM)</div>
+    <ul id="notes-list" class="notes-list"></ul>
+    <button id="approve-btn" class="approve-btn" onclick="approveCard()">Approve</button>
+  </div>
+</div>
+<script>
+let cards = [];
+let currentIndex = 0;
+let currentCard = null;
+let currentSide = "front";
+
+async function init() {
+  const resp = await fetch("/api/cards");
+  cards = await resp.json();
+  if (cards.length === 0) {
+    document.getElementById("counter").textContent = "No cards";
+    return;
+  }
+  await loadCard(0);
+}
+
+async function loadCard(index) {
+  currentIndex = index;
+  const id = cards[index];
+  const resp = await fetch("/api/cards/" + encodeURIComponent(id));
+  currentCard = await resp.json();
+
+  document.getElementById("counter").textContent = (index + 1) + " / " + cards.length;
+  document.getElementById("prev-btn").disabled = index === 0;
+  document.getElementById("next-btn").disabled = index === cards.length - 1;
+
+  const p = currentCard.data.person || {};
+  document.getElementById("f-first_name").value = p.first_name || "";
+  document.getElementById("f-last_name").value = p.last_name || "";
+  document.getElementById("f-birth_date").value = p.birth_date || "";
+  document.getElementById("f-birth_place").value = p.birth_place || "";
+  document.getElementById("f-death_date").value = p.death_date || "";
+  document.getElementById("f-death_place").value = p.death_place || "";
+  document.getElementById("f-age_at_death").value = p.age_at_death != null ? p.age_at_death : "";
+  document.getElementById("f-spouse").value = p.spouse || "";
+
+  const parents = p.parents || {};
+  document.getElementById("f-father").value = parents.father || "";
+  document.getElementById("f-mother").value = parents.mother || "";
+
+  const notesList = document.getElementById("notes-list");
+  notesList.innerHTML = "";
+  (currentCard.data.notes || []).forEach(function(note) {
+    const li = document.createElement("li");
+    li.textContent = note;
+    notesList.appendChild(li);
+  });
+
+  const btn = document.getElementById("approve-btn");
+  btn.textContent = "Approve";
+  btn.classList.remove("saved");
+
+  showSide("front");
+}
+
+function showSide(side) {
+  currentSide = side;
+  const img = document.getElementById("card-image");
+  const noImg = document.getElementById("no-image");
+  const src = side === "front" ? currentCard.front_image : currentCard.back_image;
+
+  document.getElementById("front-btn").classList.toggle("active", side === "front");
+  document.getElementById("back-btn").classList.toggle("active", side === "back");
+
+  if (src) {
+    img.src = "/images/" + encodeURIComponent(src);
+    img.style.display = "";
+    noImg.style.display = "none";
+  } else {
+    img.style.display = "none";
+    noImg.style.display = "";
+  }
+}
+
+function navigate(delta) {
+  const next = currentIndex + delta;
+  if (next >= 0 && next < cards.length) {
+    loadCard(next);
+  }
+}
+
+async function approveCard() {
+  const ageRaw = document.getElementById("f-age_at_death").value.trim();
+  const parents_father = document.getElementById("f-father").value.trim() || null;
+  const parents_mother = document.getElementById("f-mother").value.trim() || null;
+  const parents = (parents_father || parents_mother) ? { father: parents_father, mother: parents_mother } : null;
+
+  const updated = {
+    person: {
+      first_name: document.getElementById("f-first_name").value.trim() || null,
+      last_name: document.getElementById("f-last_name").value.trim() || null,
+      birth_date: document.getElementById("f-birth_date").value.trim() || null,
+      birth_place: document.getElementById("f-birth_place").value.trim() || null,
+      death_date: document.getElementById("f-death_date").value.trim() || null,
+      death_place: document.getElementById("f-death_place").value.trim() || null,
+      age_at_death: ageRaw ? parseInt(ageRaw, 10) : null,
+      spouse: document.getElementById("f-spouse").value.trim() || null,
+      parents: parents,
+    },
+    notes: currentCard.data.notes || [],
+    source: {},
+  };
+
+  await fetch("/api/cards/" + encodeURIComponent(cards[currentIndex]), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updated),
+  });
+
+  const btn = document.getElementById("approve-btn");
+  btn.textContent = "Saved!";
+  btn.classList.add("saved");
+}
+
+init();
+</script>
+</body>
+</html>
+"""
 
 
 def make_server(json_dir: Path, input_dir: Path, port: int = 0) -> HTTPServer:
