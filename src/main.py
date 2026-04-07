@@ -32,7 +32,7 @@ def main() -> None:
     text_dir = output_dir / "text"
     json_dir = output_dir / "json"
     conflicts_dir = output_dir / "date_conflicts"
-    prompt_path = script_dir / "prompts" / "extract_person.txt"
+    prompts_dir = script_dir / "prompts"
 
     # --- Serve (web UI) ---
     if args.command == "serve":
@@ -83,16 +83,20 @@ def main() -> None:
 
     # --- Extract phase ---
     if args.command in ("extract", "all"):
-        # Load prompt template
-        prompt_template = None
-        if prompt_path.exists():
-            prompt_template = prompt_path.read_text()
+        # Load prompt files
+        system_prompt_path = prompts_dir / "extract_person_system.txt"
+        user_template_path = prompts_dir / "extract_person_user.txt"
+        system_prompt = None
+        user_template = None
+        if system_prompt_path.exists() and user_template_path.exists():
+            system_prompt = system_prompt_path.read_text()
+            user_template = user_template_path.read_text()
         else:
-            print(f"Warning: prompt template not found at {prompt_path} — skipping interpretation")
+            print(f"Warning: prompt files not found in {prompts_dir} — skipping interpretation")
 
         # Pre-flight check: is Ollama reachable?
         ollama_available = False
-        if prompt_template:
+        if system_prompt:
             try:
                 ollama.list()
                 ollama_available = True
@@ -102,7 +106,7 @@ def main() -> None:
         print("\n--- Extract ---")
         text_count, verify_count, interpret_count, extract_skipped, _, extract_errors = extract_all(
             pairs, text_dir, json_dir, conflicts_dir,
-            prompt_template, ollama_available, force=args.force,
+            system_prompt, user_template, ollama_available, force=args.force,
         )
         all_errors.extend(extract_errors)
 
