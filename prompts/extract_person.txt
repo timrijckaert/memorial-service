@@ -76,12 +76,27 @@ KNOWN PLACES (Arrondissement Aalst, Oost-Vlaanderen, Belgium):
 - Lemberge
 - Liedekerke
 
+ARCHAIC / REGIONAL DUTCH MONTH NAMES:
+Some memorial cards use old Dutch or regional month names. Treat these as their modern equivalents:
+- Louwmaand / Loumaand -> Januari (January)
+- Sprokkelmaand -> Februari (February)
+- Lentemaand -> Maart (March)
+- Grasmaand -> April
+- Bloeimaand -> Mei (May)
+- Zomermaand / Weidemaand -> Juni (June)
+- Hooimaand -> Juli (July)
+- Oogst / Oogstmaand -> Augustus (August)
+- Herfstmaand / Gerstmaand -> September
+- Wijnmaand -> Oktober (October)
+- Slachtmaand -> November
+- Wintermaand -> December
+
 COMMON OCR MISSPELLINGS:
-Haeltert -> Haaltert, 
-Kerkxken -> Kerksken, 
-Haciltert -> Haaltert, 
-Denderhautem -> Denderhoutem, 
-Tiedekérke -> Liedekerke, 
+Haeltert -> Haaltert,
+Kerkxken -> Kerksken,
+Haciltert -> Haaltert,
+Denderhautem -> Denderhoutem,
+Tiedekérke -> Liedekerke,
 Aygem -> Aaigem
 Tiedekerk -> Liedekerke
 
