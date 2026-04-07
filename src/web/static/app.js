@@ -213,8 +213,6 @@ function startExtractPolling() {
 }
 
 let extractStartTime = null;
-let extractCardStartTime = null;
-let lastCurrentCardId = null;
 let timerInterval = null;
 
 function formatElapsed(ms) {
@@ -225,10 +223,6 @@ function formatElapsed(ms) {
 }
 
 function updateTimerDisplay() {
-  const el = document.getElementById('current-elapsed');
-  if (el && extractCardStartTime) {
-    el.textContent = formatElapsed(Date.now() - extractCardStartTime);
-  }
   const totalEl = document.getElementById('extract-elapsed');
   if (totalEl && extractStartTime) {
     totalEl.textContent = 'Total: ' + formatElapsed(Date.now() - extractStartTime);
@@ -245,54 +239,53 @@ async function pollExtractStatus() {
 
   if (!extractStartTime) extractStartTime = Date.now();
 
-  // Track card change for timer
-  const curId = status.current ? status.current.card_id : null;
-  if (curId !== lastCurrentCardId) {
-    lastCurrentCardId = curId;
-    extractCardStartTime = curId ? Date.now() : null;
-  }
-
   // Update summary
   const summary = document.getElementById('extract-summary');
   summary.innerHTML =
     '<span>' + status.done.length + ' done</span>' +
-    (status.current ? '<span>1 in progress</span>' : '') +
+    (status.in_flight.length > 0 ? '<span>' + status.in_flight.length + ' in progress</span>' : '') +
     '<span>' + status.queue.length + ' queued</span>' +
     (status.errors.length > 0 ? '<span style="color:#e74c3c;">' + status.errors.length + ' error(s)</span>' : '') +
     '<span id="extract-elapsed" style="margin-left:auto; color:#666;"></span>';
 
-  // Update current card
-  const currentEl = document.getElementById('current-card');
-  if (status.current) {
-    currentEl.style.display = '';
-    document.getElementById('current-name').innerHTML = status.current.card_id + ' <span id="current-elapsed" style="color:#888; font-weight:normal; font-size:12px;"></span>';
-    const steps = ['ocr_front', 'ocr_back', 'date_verify', 'llm_extract'];
-    const currentIdx = steps.indexOf(status.current.step);
-    document.querySelectorAll('.pipeline-step').forEach((el, i) => {
-      el.className = 'pipeline-step' + (i < currentIdx ? ' done' : i === currentIdx ? ' active' : '');
+  // Update in-flight cards display
+  const inFlightEl = document.getElementById('in-flight-cards');
+  if (status.in_flight.length > 0) {
+    inFlightEl.style.display = '';
+    let html = '';
+    status.in_flight.forEach(function(card) {
+      const stageLabel = card.stage.replace(/_/g, ' ');
+      html += '<div class="in-flight-item">' +
+        '<div class="dot"></div>' +
+        '<span class="name">' + card.card_id + '</span>' +
+        '<span class="label">' + stageLabel + '</span>' +
+        '</div>';
     });
-    updateTimerDisplay();
+    inFlightEl.innerHTML = html;
   } else {
-    currentEl.style.display = 'none';
+    inFlightEl.style.display = 'none';
   }
 
-  // Build a status map from the worker
-  const workerMap = {};
-  status.done.forEach(name => { workerMap[name] = { icon: 'done', statusText: 'Done' }; });
-  if (status.current) {
-    const stepLabel = status.current.step.replace(/_/g, ' ');
-    workerMap[status.current.card_id] = { icon: 'progress', statusText: stepLabel };
-  }
-  status.errors.forEach(e => { workerMap[e.card_id] = { icon: 'error', statusText: e.reason }; });
-  status.queue.forEach(name => { workerMap[name] = { icon: 'queued', statusText: 'Queued' }; });
+  // Build worker status map for card list
+  var workerMap = {};
+  status.done.forEach(function(name) { workerMap[name] = { icon: 'done', statusText: 'Done' }; });
+  status.in_flight.forEach(function(card) {
+    var stageLabel = card.stage.replace(/_/g, ' ');
+    workerMap[card.card_id] = { icon: 'progress', statusText: stageLabel };
+  });
+  status.errors.forEach(function(e) { workerMap[e.card_id] = { icon: 'error', statusText: e.reason }; });
+  status.queue.forEach(function(name) { workerMap[name] = { icon: 'queued', statusText: 'Queued' }; });
 
   // Merge: show all cards, overlay worker status on matching ones
-  const merged = allCards.map(c => {
-    const w = workerMap[c.name];
+  var merged = allCards.map(function(c) {
+    var w = workerMap[c.name];
     if (w) return { name: c.name, icon: w.icon, statusText: w.statusText, status: w.icon };
     return { name: c.name, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : c.status, status: c.status };
   });
   renderExtractList(merged);
+
+  // Update total elapsed
+  updateTimerDisplay();
 
   // Check if done
   if (status.status === 'idle' || status.status === 'cancelled') {
@@ -300,8 +293,6 @@ async function pollExtractStatus() {
     extractPollInterval = null;
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
     extractStartTime = null;
-    extractCardStartTime = null;
-    lastCurrentCardId = null;
     document.getElementById('extract-btn').style.display = '';
     document.getElementById('cancel-btn').style.display = 'none';
     renderExtractList(merged);

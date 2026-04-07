@@ -36,19 +36,7 @@
   </div>
   <div id="extract-error" class="extract-error-msg" style="display:none;"></div>
   <div id="extract-summary" class="extract-summary" style="display:none;"></div>
-  <div id="current-card" class="current-card" style="display:none;">
-    <div class="card-header">
-      <div class="dot"></div>
-      <span class="name" id="current-name"></span>
-      <span class="label">Currently processing</span>
-    </div>
-    <div class="pipeline-steps" id="pipeline-steps">
-      <div class="pipeline-step" data-step="ocr_front">OCR Front</div>
-      <div class="pipeline-step" data-step="ocr_back">OCR Back</div>
-      <div class="pipeline-step" data-step="date_verify">Date Verify</div>
-      <div class="pipeline-step" data-step="llm_extract">LLM Extract</div>
-    </div>
-  </div>
+  <div id="in-flight-cards" class="in-flight-cards" style="display:none;"></div>
   <div id="extract-card-list" class="card-list"></div>
 </div>
 
