@@ -3,10 +3,8 @@ import argparse
 from pathlib import Path
 import webbrowser
 
-import ollama
-
 from src.merge import find_pairs, merge_all
-from src.extract import extract_all
+from src.extract import extract_all, _make_gemini_client
 from src.server import make_server
 
 
@@ -33,6 +31,7 @@ def main() -> None:
     json_dir = output_dir / "json"
     conflicts_dir = output_dir / "date_conflicts"
     prompts_dir = script_dir / "prompts"
+    config_path = script_dir / "config.json"
 
     # --- Serve (web UI) ---
     if args.command == "serve":
@@ -94,19 +93,21 @@ def main() -> None:
         else:
             print(f"Warning: prompt files not found in {prompts_dir} — skipping interpretation")
 
-        # Pre-flight check: is Ollama reachable?
-        ollama_available = False
+        # Create Gemini client
+        client = None
         if system_prompt:
-            try:
-                ollama.list()
-                ollama_available = True
-            except Exception as e:
-                print(f"Warning: Ollama not reachable ({e}) — skipping LLM steps")
+            if config_path.exists():
+                try:
+                    client = _make_gemini_client(config_path)
+                except Exception as e:
+                    print(f"Warning: Failed to create Gemini client ({e}) — skipping LLM steps")
+            else:
+                print(f"Warning: {config_path} not found — skipping LLM steps")
 
         print("\n--- Extract ---")
         text_count, verify_count, interpret_count, extract_skipped, _, extract_errors = extract_all(
             pairs, text_dir, json_dir, conflicts_dir,
-            system_prompt, user_template, ollama_available, force=args.force,
+            system_prompt, user_template, client, force=args.force,
         )
         all_errors.extend(extract_errors)
 
