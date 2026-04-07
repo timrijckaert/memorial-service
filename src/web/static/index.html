@@ -10,20 +10,36 @@
 
 <!-- Navigation -->
 <nav class="nav-bar">
-  <a class="nav-tab" href="#merge" onclick="showSection('merge')">Merge</a>
+  <a class="nav-tab" href="#match" onclick="showSection('match')">Match</a>
   <a class="nav-tab" href="#extract" onclick="showSection('extract')">Extract</a>
   <a class="nav-tab" href="#review" onclick="showSection('review')">Review</a>
 </nav>
 
-<!-- Merge Section -->
-<div id="section-merge" class="section merge-section">
-  <div class="merge-controls">
-    <button id="merge-btn" class="btn btn-primary" onclick="triggerMerge()">Merge All</button>
-    <span id="merge-pair-count" style="color:#888; font-size:14px;"></span>
+<!-- Match Section -->
+<div id="section-match" class="section match-section">
+  <div class="match-controls">
+    <div class="match-summary" id="match-summary"></div>
+    <div class="match-actions">
+      <button id="scan-btn" class="btn btn-primary" onclick="scanImages()">Scan Images</button>
+      <button id="confirm-all-btn" class="btn btn-primary" onclick="confirmAllPairs()" style="display:none;">Confirm All Pairs</button>
+      <button id="proceed-extract-btn" class="btn btn-success" onclick="showSection('extract')" style="display:none;">Proceed to Extract</button>
+    </div>
   </div>
-  <p class="merge-hint">Drop your scanned front &amp; back images in the <code>input/</code> folder and refresh the page.</p>
-  <div id="merge-summary" class="merge-summary" style="display:none;"></div>
-  <div id="pairs-grid" class="pairs-grid"></div>
+  <div id="match-pair-list" class="match-pair-list"></div>
+  <div id="match-unmatched" class="match-unmatched"></div>
+  <!-- Find Match panel (hidden by default) -->
+  <div id="find-match-panel" class="find-match-panel" style="display:none;">
+    <div class="find-match-header">
+      <h3>Find match for: <span id="find-match-name"></span></h3>
+      <button class="btn" onclick="closeFindMatch()">Back to list</button>
+    </div>
+    <div id="find-match-selected" class="find-match-selected"></div>
+    <input type="text" id="find-match-filter" class="find-match-filter" placeholder="Filter by filename..." oninput="filterFindMatch()">
+    <div id="find-match-candidates" class="find-match-candidates"></div>
+    <div class="find-match-footer">
+      <button class="btn btn-danger" onclick="markSingleFromPanel()">Mark as single (no back)</button>
+    </div>
+  </div>
 </div>
 
 <!-- Extract Section -->
