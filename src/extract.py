@@ -25,7 +25,7 @@ PERSON_SCHEMA = {
                 "death_date": {"type": ["string", "null"]},
                 "death_place": {"type": ["string", "null"]},
                 "age_at_death": {"type": ["integer", "null"]},
-                "spouse": {"type": ["string", "null"]},
+                "spouses": {"type": "array", "items": {"type": "string"}},
                 "parents": {
                     "type": ["object", "null"],
                     "properties": {
@@ -36,7 +36,7 @@ PERSON_SCHEMA = {
             },
             "required": [
                 "first_name", "last_name", "birth_date", "birth_place",
-                "death_date", "death_place", "age_at_death", "spouse", "parents",
+                "death_date", "death_place", "age_at_death", "spouses", "parents",
             ],
         },
         "notes": {
