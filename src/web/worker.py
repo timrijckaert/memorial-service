@@ -6,9 +6,8 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from google import genai
-
 from src.extraction import extract_one
+from src.extraction.llm import LLMBackend
 
 
 @dataclass
@@ -59,7 +58,7 @@ class ExtractionWorker:
         conflicts_dir: Path,
         system_prompt: str | None,
         user_template: str | None,
-        client: genai.Client | None,
+        backend: LLMBackend | None,
     ) -> bool:
         """Start extraction on a background thread. Returns False if already running."""
         with self._lock:
@@ -75,7 +74,7 @@ class ExtractionWorker:
         thread = threading.Thread(
             target=self._run,
             args=(pairs, text_dir, json_dir, conflicts_dir,
-                  system_prompt, user_template, client),
+                  system_prompt, user_template, backend),
             daemon=True,
         )
         thread.start()
@@ -96,7 +95,7 @@ class ExtractionWorker:
         conflicts_dir: Path,
         system_prompt: str | None,
         user_template: str | None,
-        client: genai.Client | None,
+        backend: LLMBackend | None,
     ):
         """Process all pairs sequentially. Runs on a background thread."""
         for front_path, back_path in pairs:
@@ -120,7 +119,7 @@ class ExtractionWorker:
             result = extract_one(
                 front_path, back_path,
                 text_dir, json_dir, conflicts_dir,
-                client, system_prompt, user_template,
+                backend, system_prompt, user_template,
                 on_step=_on_step,
             )
 

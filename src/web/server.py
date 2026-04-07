@@ -7,7 +7,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote
 
-from src.extraction import make_gemini_client
+from src.extraction import make_backend
 from src.images import find_pairs, merge_all
 from src.review import list_cards, load_card, save_card
 from src.web.worker import ExtractionWorker
@@ -179,29 +179,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 system_prompt = system_prompt_path.read_text()
                 user_template = user_template_path.read_text()
 
-            # Create Gemini client
-            config_path = input_dir.parent / "config.json"
-            client = None
-            if system_prompt:
-                if config_path.exists():
-                    try:
-                        client = make_gemini_client(config_path)
-                    except Exception as e:
-                        self._send_json(
-                            {"status": "error", "error": f"Failed to create Gemini client: {e}"},
-                            503,
-                        )
-                        return
-                else:
-                    self._send_json(
-                        {"status": "error", "error": "config.json not found. Create it with your Gemini API key."},
-                        503,
-                    )
-                    return
+            backend = self.server.backend if system_prompt else None
 
             started = self.server.worker.start(
                 pairs, text_dir, json_dir, conflicts_dir,
-                system_prompt, user_template, client,
+                system_prompt, user_template, backend,
             )
             if started:
                 self._send_json({"status": "started"})
@@ -223,4 +205,6 @@ def make_server(
     server.input_dir = input_dir
     server.output_dir = output_dir
     server.worker = ExtractionWorker()
+    config_path = input_dir.parent / "config.json"
+    server.backend = make_backend(config_path)
     return server
