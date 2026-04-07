@@ -172,6 +172,13 @@ REVIEW_HTML = """\
   .approve-btn:hover { background: #3a7bc8; }
   .approve-btn.saved { background: #5cb85c; }
   .no-image { color: #888; font-style: italic; }
+  .spouse-entry { display: flex; gap: 6px; margin-bottom: 6px; }
+  .spouse-entry input { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+  .spouse-entry input:focus { outline: none; border-color: #4a90d9; }
+  .spouse-entry button { padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 14px; color: #999; }
+  .spouse-entry button:hover { background: #fee; color: #c00; border-color: #c00; }
+  .add-spouse-btn { padding: 6px 12px; border: 1px dashed #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px; color: #666; }
+  .add-spouse-btn:hover { border-color: #4a90d9; color: #4a90d9; }
 </style>
 </head>
 <body>
@@ -203,7 +210,7 @@ REVIEW_HTML = """\
     <div class="form-group"><label>Death Date (YYYY-MM-DD)</label><input id="f-death_date"></div>
     <div class="form-group"><label>Death Place</label><input id="f-death_place"></div>
     <div class="form-group"><label>Age at Death</label><input id="f-age_at_death" type="number"></div>
-    <div class="form-group"><label>Spouse</label><input id="f-spouse"></div>
+    <div class="form-group"><label>Spouses</label><div id="spouses-list"></div><button type="button" class="add-spouse-btn" onclick="addSpouseInput('')">+ Add spouse</button></div>
     <div class="section-title">Parents</div>
     <div class="form-group"><label>Father</label><input id="f-father"></div>
     <div class="form-group"><label>Mother</label><input id="f-mother"></div>
@@ -217,6 +224,35 @@ let cards = [];
 let currentIndex = 0;
 let currentCard = null;
 let currentSide = "back";
+
+function addSpouseInput(value) {
+  const container = document.getElementById("spouses-list");
+  const div = document.createElement("div");
+  div.className = "spouse-entry";
+  const input = document.createElement("input");
+  input.value = value;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "\u00d7";
+  btn.onclick = function() { div.remove(); };
+  div.appendChild(input);
+  div.appendChild(btn);
+  container.appendChild(div);
+}
+
+function removeAllSpouseInputs() {
+  document.getElementById("spouses-list").innerHTML = "";
+}
+
+function getSpousesFromForm() {
+  const inputs = document.querySelectorAll("#spouses-list .spouse-entry input");
+  const names = [];
+  inputs.forEach(function(input) {
+    const v = input.value.trim();
+    if (v) names.push(v);
+  });
+  return names;
+}
 
 async function init() {
   const resp = await fetch("/api/cards");
@@ -246,7 +282,9 @@ async function loadCard(index) {
   document.getElementById("f-death_date").value = p.death_date || "";
   document.getElementById("f-death_place").value = p.death_place || "";
   document.getElementById("f-age_at_death").value = p.age_at_death != null ? p.age_at_death : "";
-  document.getElementById("f-spouse").value = p.spouse || "";
+  removeAllSpouseInputs();
+  (p.spouses || []).forEach(function(name) { addSpouseInput(name); });
+  if (!p.spouses || p.spouses.length === 0) addSpouseInput("");
 
   const parents = p.parents || {};
   document.getElementById("f-father").value = parents.father || "";
@@ -308,7 +346,7 @@ async function approveCard() {
       death_date: document.getElementById("f-death_date").value.trim() || null,
       death_place: document.getElementById("f-death_place").value.trim() || null,
       age_at_death: ageRaw ? parseInt(ageRaw, 10) : null,
-      spouse: document.getElementById("f-spouse").value.trim() || null,
+      spouses: getSpousesFromForm(),
       parents: parents,
     },
     notes: currentCard.data.notes || [],
