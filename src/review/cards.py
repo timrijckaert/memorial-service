@@ -4,21 +4,9 @@
 import json
 from pathlib import Path
 
-_JPEG_EXTENSIONS = (".jpeg", ".jpg")
-
-
 def list_cards(json_dir: Path) -> list[str]:
     """Return sorted list of card ID stems from JSON files in the directory."""
     return sorted(p.stem for p in json_dir.iterdir() if p.suffix == ".json")
-
-
-def _find_image(input_dir: Path, stem: str) -> str | None:
-    """Find a JPEG file matching the given stem in input_dir."""
-    for ext in _JPEG_EXTENSIONS:
-        candidate = input_dir / f"{stem}{ext}"
-        if candidate.exists():
-            return candidate.name
-    return None
 
 
 def load_card(card_id: str, json_dir: Path, input_dir: Path) -> dict | None:
@@ -28,8 +16,9 @@ def load_card(card_id: str, json_dir: Path, input_dir: Path) -> dict | None:
         return None
 
     data = json.loads(json_path.read_text())
-    front_image = _find_image(input_dir, card_id)
-    back_image = _find_image(input_dir, f"{card_id} 1")
+    source = data.get("source", {})
+    front_image = source.get("front_image_file")
+    back_image = source.get("back_image_file")
 
     return {
         "data": data,

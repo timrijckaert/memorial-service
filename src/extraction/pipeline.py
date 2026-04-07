@@ -93,6 +93,8 @@ def extract_one(
             interpret_text(
                 front_text_path, back_text_path, json_output_path,
                 system_prompt, user_template, backend,
+                front_image_file=front_path.name,
+                back_image_file=back_path.name,
             )
             result.interpreted = True
         except Exception as e:

@@ -280,6 +280,7 @@ class ExtractionWorker:
                     item.front_text_path, item.back_text_path,
                     json_output_path,
                     system_prompt, user_template, backend,
+                    item.front_path.name, item.back_path.name,
                 )
             except Exception as e:
                 with self._lock:

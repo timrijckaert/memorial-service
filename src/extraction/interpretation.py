@@ -15,6 +15,8 @@ def interpret_text(
     system_prompt: str,
     user_template: str,
     backend: LLMBackend,
+    front_image_file: str | None = None,
+    back_image_file: str | None = None,
 ) -> None:
     """Interpret OCR text using an LLM backend and write structured JSON.
 
@@ -45,6 +47,8 @@ def interpret_text(
     result["source"] = {
         "front_text_file": front_text_path.name,
         "back_text_file": back_text_path.name,
+        "front_image_file": front_image_file,
+        "back_image_file": back_image_file,
     }
 
     output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
