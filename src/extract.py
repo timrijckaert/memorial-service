@@ -1,15 +1,33 @@
 # src/extract.py
 import json
 import re
+import time
 from pathlib import Path
 from PIL import Image
 from google import genai
 from google.genai import types
+from google.genai.errors import ClientError
 import pytesseract
 
 _YEAR_RE = re.compile(r"^\d{4}$")
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
+
+_MAX_RETRIES = 3
+
+
+def _call_gemini(client: genai.Client, **kwargs):
+    """Call Gemini with automatic retry on rate limit (429) errors."""
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return client.models.generate_content(**kwargs)
+        except ClientError as e:
+            if e.code == 429 and attempt < _MAX_RETRIES - 1:
+                wait = 60  # default wait
+                print(f"        Rate limited, waiting {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
 
 PERSON_SCHEMA = {
     "type": "object",
@@ -116,7 +134,8 @@ def verify_dates(image_path: Path, text_path: Path, client: genai.Client, confli
             entry["top"] + entry["height"] + pad,
         ))
 
-        resp = client.models.generate_content(
+        resp = _call_gemini(
+            client,
             model=GEMINI_MODEL,
             contents=[
                 "Read the number in this image. Reply with ONLY the 4-digit year number, nothing else.",
@@ -127,6 +146,8 @@ def verify_dates(image_path: Path, text_path: Path, client: genai.Client, confli
                 max_output_tokens=16,
             ),
         )
+        if not resp.text:
+            continue
         llm_year = resp.text.strip().rstrip(",.")
 
         if (
@@ -170,7 +191,8 @@ def interpret_text(
         "{back_text}", back_text
     )
 
-    response = client.models.generate_content(
+    response = _call_gemini(
+        client,
         model=GEMINI_MODEL,
         contents=user_message,
         config=types.GenerateContentConfig(
