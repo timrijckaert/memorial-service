@@ -138,24 +138,26 @@ function renderExtractList(cards) {
   list.innerHTML = '';
   cards.forEach(c => {
     const item = document.createElement('div');
-    const cls = c.icon === 'done' ? '' : c.icon === 'progress' ? ' in-progress' : c.icon === 'error' ? '' : ' queued';
+    const isPolling = !!extractPollInterval;
+    const cls = c.icon === 'done' ? ' done' : c.icon === 'progress' ? ' in-progress' : c.icon === 'error' ? '' : (isPolling ? ' queued' : '');
     item.className = 'card-item' + cls;
 
     const iconMap = { done: '&#10003;', error: '&#10007;', progress: '&#9679;', queued: '&#9675;' };
     const cardName = c.name || c.card_id || '';
     const encodedName = encodeURIComponent(cardName);
     let checkbox = '';
-    if ((c.icon === 'queued' || c.icon === 'done') && !extractPollInterval) {
+    if ((c.icon === 'queued' || c.icon === 'done') && !isPolling) {
       checkbox = '<input type="checkbox" class="extract-check" data-card="' + cardName.replace(/"/g, '&quot;') + '" onchange="updateExtractBtn()" style="margin-right:4px;">';
     }
-    let actions = '';
-    if (c.icon === 'done') actions = '<span class="review-link" onclick="location.hash=\'review/' + encodedName + '\'">Review &rarr;</span>';
+    if (c.icon === 'done') {
+      item.style.cursor = 'pointer';
+      item.onclick = function(e) { if (e.target.classList.contains('extract-check')) return; location.hash = 'review/' + encodedName; };
+    }
     item.innerHTML =
       checkbox +
       '<span class="icon ' + c.icon + '">' + (iconMap[c.icon] || '') + '</span>' +
       '<span class="name">' + cardName + '</span>' +
-      '<span class="status-text">' + (c.statusText || c.status || '') + '</span>' +
-      actions;
+      (c.icon !== 'queued' ? '<span class="status-text">' + (c.statusText || c.status || '') + '</span>' : '');
 
     list.appendChild(item);
   });
@@ -302,6 +304,7 @@ async function pollExtractStatus() {
     lastCurrentCardId = null;
     document.getElementById('extract-btn').style.display = '';
     document.getElementById('cancel-btn').style.display = 'none';
+    renderExtractList(merged);
     updateExtractBtn();
     if (status.status === 'cancelled') {
       document.getElementById('extract-summary').innerHTML += '<span style="color:#e67e22;"> (cancelled)</span>';

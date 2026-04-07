@@ -58,7 +58,7 @@
   .card-item .icon.queued { color: #999; }
   .card-item .name { flex: 1; }
   .card-item .status-text { font-size: 11px; color: #888; }
-  .card-item .review-link { color: #4a90d9; font-size: 11px; text-decoration: underline; cursor: pointer; }
+  .card-item.done:hover { background: #f0f7f0; border-color: #27ae60; }
   .extract-error-msg { background: #fde8e8; border: 1px solid #e74c3c; border-radius: 6px; padding: 12px; color: #c0392b; font-size: 14px; margin-bottom: 16px; }
 
   /* Review section */
