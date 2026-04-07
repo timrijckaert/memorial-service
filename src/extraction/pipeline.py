@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from google import genai
+from src.extraction.llm import LLMBackend
 
 from src.extraction.ocr import extract_text
 from src.extraction.date_verification import verify_dates
@@ -29,7 +29,7 @@ def extract_one(
     text_dir: Path,
     json_dir: Path,
     conflicts_dir: Path,
-    client: genai.Client | None,
+    backend: LLMBackend | None,
     system_prompt: str | None,
     user_template: str | None,
     on_step: Callable[[str], None] | None = None,
@@ -42,7 +42,7 @@ def extract_one(
       3. date_verify — Gemini visual cross-check of year digits
       4. llm_extract — Gemini structured data extraction
 
-    Stages 3-4 only run if a Gemini client is provided.
+    Stages 3-4 only run if a backend is provided.
     """
     result = ExtractionResult(front_name=front_path.name)
 
@@ -69,7 +69,7 @@ def extract_one(
         return result
 
     # Date verification (LLM visual cross-check)
-    if client:
+    if backend:
         if on_step:
             on_step("date_verify")
         try:
@@ -77,7 +77,7 @@ def extract_one(
                 (front_text_path, front_path),
                 (back_text_path, back_path),
             ]:
-                corrections = verify_dates(img_path, txt_path, client, conflicts_dir)
+                corrections = verify_dates(img_path, txt_path, backend, conflicts_dir)
                 for c in corrections:
                     result.verify_corrections += 1
                     result.date_fixes.append(f"date fix ({img_path.name}): {c}")
@@ -85,14 +85,14 @@ def extract_one(
             result.errors.append(f"{front_path.name} date verify: {e}")
 
     # LLM Interpretation
-    if client:
+    if backend:
         if on_step:
             on_step("llm_extract")
         json_output_path = json_dir / f"{front_path.stem}.json"
         try:
             interpret_text(
                 front_text_path, back_text_path, json_output_path,
-                system_prompt, user_template, client,
+                system_prompt, user_template, backend,
             )
             result.interpreted = True
         except Exception as e:

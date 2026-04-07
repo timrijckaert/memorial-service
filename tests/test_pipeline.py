@@ -21,13 +21,13 @@ def test_extract_one_calls_steps_in_order(mock_ocr, mock_verify, mock_interpret,
     json_dir = tmp_path / "json"
     json_dir.mkdir()
     conflicts_dir = tmp_path / "conflicts"
-    mock_client = MagicMock()
+    mock_backend = MagicMock()
     mock_verify.return_value = []
 
     steps = []
     result = extract_one(
         front, back, text_dir, json_dir, conflicts_dir,
-        mock_client, "system", "template",
+        mock_backend, "system", "template",
         on_step=lambda s: steps.append(s),
     )
 
@@ -65,8 +65,8 @@ def test_extract_one_stops_on_ocr_front_failure(mock_ocr, tmp_path):
 
 
 @patch("src.extraction.pipeline.extract_text")
-def test_extract_one_skips_llm_without_client(mock_ocr, tmp_path):
-    """Without a Gemini client, date verify and interpret are skipped."""
+def test_extract_one_skips_llm_without_backend(mock_ocr, tmp_path):
+    """Without a backend, date verify and interpret are skipped."""
     front = tmp_path / "card.jpeg"
     back = tmp_path / "card 1.jpeg"
     front.touch()
@@ -103,12 +103,12 @@ def test_extract_one_reports_date_corrections(mock_ocr, mock_verify, mock_interp
     json_dir = tmp_path / "json"
     json_dir.mkdir()
     conflicts_dir = tmp_path / "conflicts"
-    mock_client = MagicMock()
+    mock_backend = MagicMock()
     mock_verify.side_effect = [["1944 -> 1941"], []]
 
     result = extract_one(
         front, back, text_dir, json_dir, conflicts_dir,
-        mock_client, "system", "template",
+        mock_backend, "system", "template",
     )
 
     assert result.verify_corrections == 1
