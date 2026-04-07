@@ -712,7 +712,7 @@ class ExtractionWorker:
             }
 
     def start(self, pairs, text_dir, json_dir, conflicts_dir,
-              prompt_template, ollama_available, force):
+              system_prompt, user_template, ollama_available, force):
         with self._lock:
             if self._state["status"] == "running":
                 return False
@@ -729,7 +729,7 @@ class ExtractionWorker:
         thread = threading.Thread(
             target=self._run,
             args=(pairs, text_dir, json_dir, conflicts_dir,
-                  prompt_template, ollama_available, force),
+                  system_prompt, user_template, ollama_available, force),
             daemon=True,
         )
         thread.start()
@@ -742,7 +742,7 @@ class ExtractionWorker:
                 self._state["status"] = "cancelling"
 
     def _run(self, pairs, text_dir, json_dir, conflicts_dir,
-             prompt_template, ollama_available, force):
+             system_prompt, user_template, ollama_available, force):
         for front_path, back_path in pairs:
             if self._cancel.is_set():
                 with self._lock:
@@ -772,7 +772,7 @@ class ExtractionWorker:
             result = _extract_one(
                 front_path, back_path,
                 text_dir, json_dir, conflicts_dir,
-                ollama_available, prompt_template,
+                ollama_available, system_prompt, user_template,
                 on_step=_on_step,
             )
 
@@ -947,15 +947,19 @@ class AppHandler(BaseHTTPRequestHandler):
             json_dir.mkdir(exist_ok=True)
             conflicts_dir = output_dir / "date_conflicts"
 
-            # Load prompt template
-            prompt_path = input_dir.parent / "prompts" / "extract_person.txt"
-            prompt_template = None
-            if prompt_path.exists():
-                prompt_template = prompt_path.read_text()
+            # Load prompt files
+            prompts_dir = input_dir.parent / "prompts"
+            system_prompt_path = prompts_dir / "extract_person_system.txt"
+            user_template_path = prompts_dir / "extract_person_user.txt"
+            system_prompt = None
+            user_template = None
+            if system_prompt_path.exists() and user_template_path.exists():
+                system_prompt = system_prompt_path.read_text()
+                user_template = user_template_path.read_text()
 
             # Check Ollama availability
             ollama_available = False
-            if prompt_template:
+            if system_prompt:
                 try:
                     import ollama as ollama_client
                     ollama_client.list()
@@ -963,13 +967,13 @@ class AppHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-            if not ollama_available and prompt_template:
+            if not ollama_available and system_prompt:
                 self._send_json({"status": "error", "error": "Ollama is not running. Start it with `ollama serve`."}, 503)
                 return
 
             started = self.server.worker.start(
                 pairs, text_dir, json_dir, conflicts_dir,
-                prompt_template, ollama_available, force,
+                system_prompt, user_template, ollama_available, force,
             )
             if started:
                 self._send_json({"status": "started"})
