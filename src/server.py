@@ -314,7 +314,13 @@ async function triggerMerge() {
   if (data.ok > 0) parts.push('<span class="ok">&#10003; ' + data.ok + ' merged</span>');
   if (data.skipped > 0) parts.push('<span class="skip">' + data.skipped + ' skipped</span>');
   if (data.errors.length > 0) parts.push('<span class="err">&#10007; ' + data.errors.length + ' error(s)</span>');
-  summary.innerHTML = parts.join(' &middot; ');
+  let html = parts.join(' &middot; ');
+  if (data.errors.length > 0) {
+    html += '<ul style="margin-top:8px; padding-left:20px; font-size:13px; color:#e74c3c;">';
+    data.errors.forEach(e => { html += '<li>' + e.replace(/</g, '&lt;') + '</li>'; });
+    html += '</ul>';
+  }
+  summary.innerHTML = html;
 
   btn.disabled = false;
   btn.textContent = 'Merge All';
