@@ -1,4 +1,5 @@
 # src/merge.py
+import concurrent.futures
 import json
 import os
 import re
@@ -168,8 +169,8 @@ def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None =
             entry["top"] + entry["height"] + pad,
         ))
 
-        # Save crop to a temporary file for the LLM
-        crop_path = text_path.parent / f"_crop_{entry['ocr_year']}.png"
+        # Save crop to a temporary file for the LLM (include stem for thread safety)
+        crop_path = text_path.parent / f"_crop_{text_path.stem}_{entry['ocr_year']}.png"
         crop.save(crop_path)
 
         try:
@@ -180,7 +181,7 @@ def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None =
                     "content": "Read the number in this image. Reply with ONLY the 4-digit year number, nothing else.",
                     "images": [str(crop_path)],
                 }],
-                options={"temperature": 0},
+                options={"temperature": 0, "num_predict": 16},
             )
             llm_year = resp.message.content.strip().rstrip(",.")
 
@@ -268,10 +269,15 @@ def interpret_text(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
         format=PERSON_SCHEMA,
-        options={"temperature": 0},
+        options={"temperature": 0, "num_predict": 2048},
     )
 
-    result = json.loads(response.message.content)
+    try:
+        result = json.loads(response.message.content)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"LLM returned invalid JSON: {response.message.content[:200]}"
+        ) from e
 
     result["source"] = {
         "front_text_file": front_text_path.name,
@@ -279,6 +285,72 @@ def interpret_text(
     }
 
     output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+def _process_pair(
+    front_path: Path,
+    back_path: Path,
+    output_dir: Path,
+    text_dir: Path,
+    json_dir: Path,
+    conflicts_dir: Path,
+    ollama_available: bool,
+    prompt_template: str | None,
+) -> dict:
+    """Process a single front/back pair through the full pipeline.
+
+    Returns a dict with counts and errors for aggregation by the caller.
+    """
+    result = {
+        "front_name": front_path.name,
+        "stitched": False,
+        "ocr": False,
+        "verify_corrections": 0,
+        "interpreted": False,
+        "errors": [],
+        "date_fixes": [],
+    }
+
+    output_path = output_dir / front_path.name
+    front_text_path = text_dir / f"{front_path.stem}_front.txt"
+    back_text_path = text_dir / f"{back_path.stem}_back.txt"
+
+    # Stitch
+    try:
+        stitch_pair(front_path, back_path, output_path)
+        result["stitched"] = True
+    except Exception as e:
+        result["errors"].append(f"{front_path.name} stitch: {e}")
+
+    # OCR
+    try:
+        extract_text(front_path, front_text_path)
+        extract_text(back_path, back_text_path)
+        result["ocr"] = True
+    except Exception as e:
+        result["errors"].append(f"{front_path.name} OCR: {e}")
+
+    # Date verification (LLM visual cross-check)
+    if ollama_available and result["ocr"]:
+        try:
+            for txt_path, img_path in [(front_text_path, front_path), (back_text_path, back_path)]:
+                corrections = verify_dates(img_path, txt_path, conflicts_dir)
+                for c in corrections:
+                    result["verify_corrections"] += 1
+                    result["date_fixes"].append(f"date fix ({img_path.name}): {c}")
+        except Exception as e:
+            result["errors"].append(f"{front_path.name} date verify: {e}")
+
+    # LLM Interpretation
+    if ollama_available and result["ocr"]:
+        json_output_path = json_dir / f"{front_path.stem}.json"
+        try:
+            interpret_text(front_text_path, back_text_path, json_output_path, prompt_template)
+            result["interpreted"] = True
+        except Exception as e:
+            result["errors"].append(f"{front_path.name} interpret: {e}")
+
+    return result
 
 
 def main() -> None:
@@ -332,57 +404,38 @@ def main() -> None:
 
     all_errors: list[str] = list(errors)
 
-    for i, (front_path, back_path) in enumerate(pairs, 1):
-        output_path = output_dir / front_path.name
-        pair_ok = True
+    # Process pairs in parallel — stitching and OCR overlap across pairs,
+    # while Ollama naturally queues LLM requests one at a time.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {
+            pool.submit(
+                _process_pair, front_path, back_path,
+                output_dir, text_dir, json_dir, conflicts_dir,
+                ollama_available, prompt_template,
+            ): front_path.name
+            for front_path, back_path in pairs
+        }
 
-        # Stitch
-        try:
-            stitch_pair(front_path, back_path, output_path)
-            ok_count += 1
-        except Exception as e:
-            all_errors.append(f"{front_path.name} stitch: {e}")
-            pair_ok = False
+        completed = 0
+        for future in concurrent.futures.as_completed(futures):
+            completed += 1
+            result = future.result()
 
-        # OCR
-        ocr_ok = False
-        front_text_path = text_dir / f"{front_path.stem}_front.txt"
-        back_text_path = text_dir / f"{back_path.stem}_back.txt"
-        try:
-            extract_text(front_path, front_text_path)
-            extract_text(back_path, back_text_path)
-            text_count += 1
-            ocr_ok = True
-        except Exception as e:
-            all_errors.append(f"{front_path.name} OCR: {e}")
-            pair_ok = False
+            for fix in result["date_fixes"]:
+                print(f"        {fix}")
 
-        # Date verification (LLM visual cross-check)
-        if ollama_available and ocr_ok:
-            try:
-                for txt_path, img_path in [(front_text_path, front_path), (back_text_path, back_path)]:
-                    corrections = verify_dates(img_path, txt_path, conflicts_dir)
-                    for c in corrections:
-                        verify_count += 1
-                        print(f"        date fix ({img_path.name}): {c}")
-            except Exception as e:
-                all_errors.append(f"{front_path.name} date verify: {e}")
+            pair_ok = not result["errors"]
+            name = result["front_name"]
+            if pair_ok:
+                print(f"[{completed:>{width}}/{total}] {name}  OK")
+            else:
+                print(f"[{completed:>{width}}/{total}] {name}  ERROR")
 
-        # LLM Interpretation
-        if ollama_available and ocr_ok:
-            json_output_path = json_dir / f"{front_path.stem}.json"
-            try:
-                interpret_text(front_text_path, back_text_path, json_output_path, prompt_template)
-                interpret_count += 1
-            except Exception as e:
-                all_errors.append(f"{front_path.name} interpret: {e}")
-                pair_ok = False
-
-        # Progress
-        if pair_ok:
-            print(f"[{i:>{width}}/{total}] {front_path.name}  OK")
-        else:
-            print(f"[{i:>{width}}/{total}] {front_path.name}  ERROR")
+            ok_count += result["stitched"]
+            text_count += result["ocr"]
+            verify_count += result["verify_corrections"]
+            interpret_count += result["interpreted"]
+            all_errors.extend(result["errors"])
 
     print(f"\nDone: {ok_count} merged, {text_count} text extracted, {verify_count} date{'s' if verify_count != 1 else ''} corrected, {interpret_count} interpreted, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
 

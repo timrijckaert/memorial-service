@@ -118,5 +118,5 @@ def test_interpret_text_invalid_json_raises(mock_chat, tmp_path):
     back_text.write_text("")
     output = tmp_path / "card.json"
 
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(ValueError, match="LLM returned invalid JSON"):
         interpret_text(front_text, back_text, output, PROMPT_TEMPLATE)
