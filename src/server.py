@@ -215,7 +215,7 @@ APP_HTML = """\
 
 <script>
 /* ---- Navigation ---- */
-function showSection(name) {
+async function showSection(name) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
 
@@ -225,19 +225,19 @@ function showSection(name) {
   const tab = document.querySelector('.nav-tab[href="#' + name + '"]');
   if (tab) tab.classList.add('active');
 
-  if (name === 'merge') loadMergePairs();
-  if (name === 'extract') loadExtractCards();
-  if (name === 'review') initReview();
+  if (name === 'merge') await loadMergePairs();
+  if (name === 'extract') await loadExtractCards();
+  if (name === 'review') await initReview();
 }
 
-function handleHash() {
+async function handleHash() {
   const hash = location.hash.slice(1) || 'merge';
   if (hash.startsWith('review/')) {
     const cardId = decodeURIComponent(hash.slice(7));
-    showSection('review');
+    await showSection('review');
     reviewJumpTo(cardId);
   } else {
-    showSection(hash);
+    await showSection(hash);
   }
 }
 
@@ -363,6 +363,8 @@ function renderExtractList(cards) {
 
 async function triggerExtract() {
   const force = document.getElementById('force-extract').checked;
+  const errorEl = document.getElementById('extract-error');
+  errorEl.style.display = 'none';
   const resp = await fetch('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -370,6 +372,11 @@ async function triggerExtract() {
   });
   const data = await resp.json();
   if (data.status === 'already_running') return;
+  if (data.status === 'error') {
+    errorEl.textContent = data.error;
+    errorEl.style.display = '';
+    return;
+  }
 
   startExtractPolling();
 }
@@ -602,7 +609,13 @@ class ExtractionWorker:
 
     def get_status(self) -> dict:
         with self._lock:
-            return dict(self._state)
+            return {
+                "status": self._state["status"],
+                "current": dict(self._state["current"]) if self._state["current"] else None,
+                "done": list(self._state["done"]),
+                "errors": [dict(e) for e in self._state["errors"]],
+                "queue": list(self._state["queue"]),
+            }
 
     def start(self, pairs, text_dir, json_dir, conflicts_dir,
               prompt_template, ollama_available, force):
@@ -845,6 +858,10 @@ class AppHandler(BaseHTTPRequestHandler):
                     ollama_available = True
                 except Exception:
                     pass
+
+            if not ollama_available and prompt_template:
+                self._send_json({"status": "error", "error": "Ollama is not running. Start it with `ollama serve`."}, 503)
+                return
 
             started = self.server.worker.start(
                 pairs, text_dir, json_dir, conflicts_dir,
