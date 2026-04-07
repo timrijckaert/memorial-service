@@ -17,8 +17,7 @@ SAMPLE_LLM_RESPONSE = json.dumps({
         "death_date": "1913-12-21",
         "death_place": "Kerksken",
         "age_at_death": None,
-        "spouses": ["Amelia Gees"],
-        "parents": None
+        "spouses": ["Amelia Gees"]
     },
     "notes": [
         "birth_place OCR reads 'Kerkxken', normalized to 'Kerksken'",

@@ -211,9 +211,6 @@ REVIEW_HTML = """\
     <div class="form-group"><label>Death Place</label><input id="f-death_place"></div>
     <div class="form-group"><label>Age at Death</label><input id="f-age_at_death" type="number"></div>
     <div class="form-group"><label>Spouses</label><div id="spouses-list"></div><button type="button" class="add-spouse-btn" onclick="addSpouseInput('')">+ Add spouse</button></div>
-    <div class="section-title">Parents</div>
-    <div class="form-group"><label>Father</label><input id="f-father"></div>
-    <div class="form-group"><label>Mother</label><input id="f-mother"></div>
     <div class="section-title">Notes (from LLM)</div>
     <ul id="notes-list" class="notes-list"></ul>
     <button id="approve-btn" class="approve-btn" onclick="approveCard()">Approve</button>
@@ -286,10 +283,6 @@ async function loadCard(index) {
   (p.spouses || []).forEach(function(name) { addSpouseInput(name); });
   if (!p.spouses || p.spouses.length === 0) addSpouseInput("");
 
-  const parents = p.parents || {};
-  document.getElementById("f-father").value = parents.father || "";
-  document.getElementById("f-mother").value = parents.mother || "";
-
   const notesList = document.getElementById("notes-list");
   notesList.innerHTML = "";
   (currentCard.data.notes || []).forEach(function(note) {
@@ -333,9 +326,6 @@ function navigate(delta) {
 
 async function approveCard() {
   const ageRaw = document.getElementById("f-age_at_death").value.trim();
-  const parents_father = document.getElementById("f-father").value.trim() || null;
-  const parents_mother = document.getElementById("f-mother").value.trim() || null;
-  const parents = (parents_father || parents_mother) ? { father: parents_father, mother: parents_mother } : null;
 
   const updated = {
     person: {
@@ -347,7 +337,6 @@ async function approveCard() {
       death_place: document.getElementById("f-death_place").value.trim() || null,
       age_at_death: ageRaw ? parseInt(ageRaw, 10) : null,
       spouses: getSpousesFromForm(),
-      parents: parents,
     },
     notes: currentCard.data.notes || [],
     source: {},

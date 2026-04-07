@@ -26,17 +26,10 @@ PERSON_SCHEMA = {
                 "death_place": {"type": ["string", "null"]},
                 "age_at_death": {"type": ["integer", "null"]},
                 "spouses": {"type": "array", "items": {"type": "string"}},
-                "parents": {
-                    "type": ["object", "null"],
-                    "properties": {
-                        "father": {"type": ["string", "null"]},
-                        "mother": {"type": ["string", "null"]},
-                    },
-                },
             },
             "required": [
                 "first_name", "last_name", "birth_date", "birth_place",
-                "death_date", "death_place", "age_at_death", "spouses", "parents",
+                "death_date", "death_place", "age_at_death", "spouses",
             ],
         },
         "notes": {
