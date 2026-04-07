@@ -1,9 +1,10 @@
 # src/extraction/schema.py
 """Shared constants and JSON schema for the extraction pipeline."""
 
-__all__ = ["PERSON_SCHEMA", "GEMINI_MODEL"]
+__all__ = ["PERSON_SCHEMA", "GEMINI_MODEL", "OLLAMA_MODEL"]
 
 GEMINI_MODEL = "gemini-2.5-flash"
+OLLAMA_MODEL = "gemma3:4b"
 
 PERSON_SCHEMA = {
     "type": "object",
