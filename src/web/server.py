@@ -176,10 +176,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 options = {}
 
             cards_filter = options.get("cards", None)
-            pairs, _singles = self.server.match_state.get_confirmed_items()
+            pairs, singles = self.server.match_state.get_confirmed_items()
+            all_items = pairs + [(s, None) for s in singles]
             if cards_filter:
                 card_set = set(cards_filter)
-                pairs = [(f, b) for f, b in pairs if f.stem in card_set]
+                all_items = [(f, b) for f, b in all_items if f.stem in card_set]
             text_dir = output_dir / "text"
             text_dir.mkdir(exist_ok=True)
             json_dir.mkdir(exist_ok=True)
@@ -198,7 +199,7 @@ class AppHandler(BaseHTTPRequestHandler):
             backend = self.server.backend if system_prompt else None
 
             started = self.server.worker.start(
-                pairs, text_dir, json_dir, conflicts_dir,
+                all_items, text_dir, json_dir, conflicts_dir,
                 system_prompt, user_template, backend,
             )
             if started:

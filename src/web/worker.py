@@ -46,9 +46,9 @@ class _OcrResult:
     """Internal data passed from OCR stage to LLM stage."""
     card_name: str
     front_path: Path
-    back_path: Path
+    back_path: Path | None
     front_text_path: Path
-    back_text_path: Path
+    back_text_path: Path | None
 
 
 class ExtractionWorker:
@@ -85,7 +85,7 @@ class ExtractionWorker:
 
     def start(
         self,
-        pairs: list[tuple[Path, Path]],
+        pairs: list[tuple[Path, Path | None]],
         text_dir: Path,
         json_dir: Path,
         conflicts_dir: Path,
@@ -168,7 +168,7 @@ class ExtractionWorker:
     async def _ocr_producer(self, pairs, text_dir, ocr_queue, executor):
         loop = asyncio.get_running_loop()
 
-        async def ocr_one(front_path: Path, back_path: Path):
+        async def ocr_one(front_path: Path, back_path: Path | None):
             card_name = front_path.stem
             if self._cancel.is_set():
                 return
@@ -181,19 +181,23 @@ class ExtractionWorker:
                 )
 
             front_text_path = text_dir / f"{front_path.stem}_front.txt"
-            back_text_path = text_dir / f"{back_path.stem}_back.txt"
+            back_text_path = text_dir / f"{front_path.stem}_back.txt" if back_path else None
 
             try:
-                await asyncio.gather(
+                tasks = [
                     loop.run_in_executor(
                         executor, extract_text,
                         front_path, front_text_path,
                     ),
-                    loop.run_in_executor(
-                        executor, extract_text,
-                        back_path, back_text_path,
-                    ),
-                )
+                ]
+                if back_path and back_text_path:
+                    tasks.append(
+                        loop.run_in_executor(
+                            executor, extract_text,
+                            back_path, back_text_path,
+                        ),
+                    )
+                await asyncio.gather(*tasks)
             except Exception as e:
                 with self._lock:
                     self._remove_in_flight(card_name)
@@ -250,10 +254,10 @@ class ExtractionWorker:
                         break
 
             try:
-                for txt_path, img_path in [
-                    (item.front_text_path, item.front_path),
-                    (item.back_text_path, item.back_path),
-                ]:
+                verify_items = [(item.front_text_path, item.front_path)]
+                if item.back_text_path and item.back_path:
+                    verify_items.append((item.back_text_path, item.back_path))
+                for txt_path, img_path in verify_items:
                     await loop.run_in_executor(
                         executor, verify_dates,
                         img_path, txt_path, backend, conflicts_dir,
@@ -274,13 +278,15 @@ class ExtractionWorker:
                         break
 
             json_output_path = json_dir / f"{card_name}.json"
+            back_text = item.back_text_path if item.back_text_path else item.front_text_path
             try:
                 await loop.run_in_executor(
                     executor, interpret_text,
-                    item.front_text_path, item.back_text_path,
+                    item.front_text_path, back_text,
                     json_output_path,
                     system_prompt, user_template, backend,
-                    item.front_path.name, item.back_path.name,
+                    item.front_path.name,
+                    item.back_path.name if item.back_path else None,
                 )
             except Exception as e:
                 with self._lock:
