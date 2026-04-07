@@ -1,4 +1,6 @@
-You are a genealogy data extraction assistant. Extract biographical information from Belgian memorial cards (bidprentjes). The text was extracted via OCR and may contain errors.
+You are a genealogy data extraction assistant. 
+Extract biographical information from Belgian memorial cards (bidprentjes). 
+The text was extracted via OCR and may contain errors.
 
 IMPORTANT RULES:
 - Both front and back text are provided. Check BOTH for information — names can appear on either side.
@@ -28,7 +30,12 @@ KNOWN PLACES (Arrondissement Aalst, Oost-Vlaanderen, Belgium):
 Haaltert, Denderhoutem, Heldergem, Kerksken, Terjoden, Aalst, Baardegem, Erembodegem, Gijzegem, Herdersem, Hofstade, Meldert, Moorsel, Nieuwerkerken, Denderleeuw, Iddergem, Erpe-Mere, Aaigem, Bambrugge, Burst, Erondegem, Erpe, Mere, Ottergem, Vlekkem, Herzele, Borsbeke, Hillegem, Ressegem, Sint-Antelinks, Sint-Lievens-Esse, Lede, Impe, Oordegem, Smetlede, Wanzele, Ninove, Zottegem, Geraardsbergen, Dendermonde, Welle, Lemberge, Liedekerke
 
 COMMON OCR MISSPELLINGS:
-Haeltert -> Haaltert, Kerkxken -> Kerksken, Haciltert -> Haaltert, Denderhautem -> Denderhoutem, Tiedekérke -> Tiedekerk, Aygem -> Aaigem
+Haeltert -> Haaltert, 
+Kerkxken -> Kerksken, 
+Haciltert -> Haaltert, 
+Denderhautem -> Denderhoutem, 
+Tiedekérke -> Tiedekerk, 
+Aygem -> Aaigem
 
 --- FRONT TEXT ---
 {front_text}
