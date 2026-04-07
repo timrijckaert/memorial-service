@@ -1,16 +1,13 @@
 # src/extraction/date_verification.py
-"""Verify OCR-read year digits by visual cross-check with Gemini."""
+"""Verify OCR-read year digits by visual cross-check with an LLM backend."""
 
 import re
 from pathlib import Path
 
 from PIL import Image
-from google import genai
-from google.genai import types
 import pytesseract
 
-from src.extraction.gemini import _call_gemini
-from src.extraction.schema import GEMINI_MODEL
+from src.extraction.llm import LLMBackend
 
 _YEAR_RE = re.compile(r"^\d{4}$")
 
@@ -18,14 +15,14 @@ _YEAR_RE = re.compile(r"^\d{4}$")
 def verify_dates(
     image_path: Path,
     text_path: Path,
-    client: genai.Client,
+    backend: LLMBackend,
     conflicts_dir: Path | None = None,
 ) -> list[str]:
-    """Verify year digits in OCR text by cropping them from the image and asking Gemini.
+    """Verify year digits in OCR text by cropping them from the image and asking an LLM.
 
     Uses Tesseract's bounding-box data to locate year-like words (4 digits),
-    crops each region, and sends the crop to Gemini for visual verification.
-    If Gemini reads a different year, the text file is updated in place and
+    crops each region, and sends the crop to the LLM backend for visual verification.
+    If the LLM reads a different year, the text file is updated in place and
     the crop image is saved to conflicts_dir for manual review.
 
     Returns a list of corrections made (empty if all years match).
@@ -44,7 +41,7 @@ def verify_dates(
 
     for entry in years:
         crop = _crop_year_region(image, entry)
-        llm_year = _ask_gemini_for_year(client, crop)
+        llm_year = _ask_llm_for_year(backend, crop)
         if llm_year is None:
             continue
 
@@ -87,23 +84,17 @@ def _crop_year_region(image: Image.Image, entry: dict, pad: int = 10) -> Image.I
     ))
 
 
-def _ask_gemini_for_year(client: genai.Client, crop: Image.Image) -> str | None:
-    """Send a cropped year image to Gemini and return the read year, or None."""
-    resp = _call_gemini(
-        client,
-        model=GEMINI_MODEL,
-        contents=[
-            "Read the number in this image. Reply with ONLY the 4-digit year number, nothing else.",
-            crop,
-        ],
-        config=types.GenerateContentConfig(
-            temperature=0,
-            max_output_tokens=16,
-        ),
+def _ask_llm_for_year(backend: LLMBackend, crop: Image.Image) -> str | None:
+    """Send a cropped year image to the LLM backend and return the read year, or None."""
+    text = backend.generate_vision(
+        "Read the number in this image. Reply with ONLY the 4-digit year number, nothing else.",
+        crop,
+        temperature=0,
+        max_tokens=16,
     )
-    if not resp.text:
+    if not text:
         return None
-    cleaned = resp.text.strip().rstrip(",.")
+    cleaned = text.strip().rstrip(",.")
     return cleaned if _YEAR_RE.match(cleaned) else None
 
 

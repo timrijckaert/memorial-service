@@ -18,22 +18,14 @@ def _make_image_with_text(tmp_path: Path, text: str, filename: str = "card.jpeg"
     return path
 
 
-def _mock_gemini_response(text: str):
-    """Create a mock Gemini response with a .text attribute."""
-    mock_resp = MagicMock()
-    mock_resp.text = text
-    return mock_resp
-
-
 @patch("src.extraction.date_verification.pytesseract.image_to_data")
-@patch("src.extraction.date_verification._call_gemini")
-def test_verify_dates_corrects_misread_year(mock_gemini, mock_data, tmp_path):
+def test_verify_dates_corrects_misread_year(mock_data, tmp_path):
     """When LLM reads a different year than OCR, the text file is updated."""
     image_path = _make_image_with_text(tmp_path, "overleden 27 Februari 1944")
     text_path = tmp_path / "card_back.txt"
     text_path.write_text("overleden 27 Februari 1944")
     conflicts_dir = tmp_path / "conflicts"
-    mock_client = MagicMock()
+    backend = MagicMock()
 
     mock_data.return_value = {
         "text": ["overleden", "27", "Februari", "1944,"],
@@ -43,9 +35,9 @@ def test_verify_dates_corrects_misread_year(mock_gemini, mock_data, tmp_path):
         "height": [20, 20, 20, 20],
         "conf": [95, 96, 95, 86],
     }
-    mock_gemini.return_value = _mock_gemini_response("1941")
+    backend.generate_vision.return_value = "1941"
 
-    corrections = verify_dates(image_path, text_path, mock_client, conflicts_dir)
+    corrections = verify_dates(image_path, text_path, backend, conflicts_dir)
 
     assert corrections == ["1944 -> 1941"]
     assert "1941" in text_path.read_text()
@@ -53,14 +45,13 @@ def test_verify_dates_corrects_misread_year(mock_gemini, mock_data, tmp_path):
 
 
 @patch("src.extraction.date_verification.pytesseract.image_to_data")
-@patch("src.extraction.date_verification._call_gemini")
-def test_verify_dates_saves_conflict_image(mock_gemini, mock_data, tmp_path):
+def test_verify_dates_saves_conflict_image(mock_data, tmp_path):
     """When OCR and LLM disagree, a crop image is saved for manual review."""
     image_path = _make_image_with_text(tmp_path, "1944", filename="card_back.jpeg")
     text_path = tmp_path / "card_back.txt"
     text_path.write_text("den 27 Februari 1944")
     conflicts_dir = tmp_path / "conflicts"
-    mock_client = MagicMock()
+    backend = MagicMock()
 
     mock_data.return_value = {
         "text": ["1944,"],
@@ -70,9 +61,9 @@ def test_verify_dates_saves_conflict_image(mock_gemini, mock_data, tmp_path):
         "height": [20],
         "conf": [86],
     }
-    mock_gemini.return_value = _mock_gemini_response("1941")
+    backend.generate_vision.return_value = "1941"
 
-    verify_dates(image_path, text_path, mock_client, conflicts_dir)
+    verify_dates(image_path, text_path, backend, conflicts_dir)
 
     assert conflicts_dir.exists()
     conflict_files = list(conflicts_dir.glob("*.png"))
@@ -82,13 +73,12 @@ def test_verify_dates_saves_conflict_image(mock_gemini, mock_data, tmp_path):
 
 
 @patch("src.extraction.date_verification.pytesseract.image_to_data")
-@patch("src.extraction.date_verification._call_gemini")
-def test_verify_dates_no_correction_when_matching(mock_gemini, mock_data, tmp_path):
+def test_verify_dates_no_correction_when_matching(mock_data, tmp_path):
     """When LLM and OCR agree, text is unchanged."""
     image_path = _make_image_with_text(tmp_path, "geboren 15 Juni 1852")
     text_path = tmp_path / "card_back.txt"
     text_path.write_text("geboren 15 Juni 1852")
-    mock_client = MagicMock()
+    backend = MagicMock()
 
     mock_data.return_value = {
         "text": ["geboren", "15", "Juni", "1852"],
@@ -98,22 +88,21 @@ def test_verify_dates_no_correction_when_matching(mock_gemini, mock_data, tmp_pa
         "height": [20, 20, 20, 20],
         "conf": [95, 96, 95, 68],
     }
-    mock_gemini.return_value = _mock_gemini_response("1852")
+    backend.generate_vision.return_value = "1852"
 
-    corrections = verify_dates(image_path, text_path, mock_client)
+    corrections = verify_dates(image_path, text_path, backend)
 
     assert corrections == []
     assert text_path.read_text() == "geboren 15 Juni 1852"
 
 
 @patch("src.extraction.date_verification.pytesseract.image_to_data")
-@patch("src.extraction.date_verification._call_gemini")
-def test_verify_dates_rejects_llm_year_outside_range(mock_gemini, mock_data, tmp_path):
+def test_verify_dates_rejects_llm_year_outside_range(mock_data, tmp_path):
     """When LLM returns a year outside 1800-1950, the OCR value is kept."""
     image_path = _make_image_with_text(tmp_path, "overleden 1926")
     text_path = tmp_path / "card_back.txt"
     text_path.write_text("overleden 1926")
-    mock_client = MagicMock()
+    backend = MagicMock()
 
     mock_data.return_value = {
         "text": ["overleden", "1926"],
@@ -123,9 +112,9 @@ def test_verify_dates_rejects_llm_year_outside_range(mock_gemini, mock_data, tmp
         "height": [20, 20],
         "conf": [95, 86],
     }
-    mock_gemini.return_value = _mock_gemini_response("2026")
+    backend.generate_vision.return_value = "2026"
 
-    corrections = verify_dates(image_path, text_path, mock_client)
+    corrections = verify_dates(image_path, text_path, backend)
 
     assert corrections == []
     assert text_path.read_text() == "overleden 1926"
@@ -137,7 +126,7 @@ def test_verify_dates_no_years_skips_llm(mock_data, tmp_path):
     image_path = _make_image_with_text(tmp_path, "no dates here")
     text_path = tmp_path / "card_front.txt"
     text_path.write_text("no dates here")
-    mock_client = MagicMock()
+    backend = MagicMock()
 
     mock_data.return_value = {
         "text": ["no", "dates", "here"],
@@ -148,19 +137,18 @@ def test_verify_dates_no_years_skips_llm(mock_data, tmp_path):
         "conf": [95, 95, 95],
     }
 
-    corrections = verify_dates(image_path, text_path, mock_client)
+    corrections = verify_dates(image_path, text_path, backend)
 
     assert corrections == []
 
 
 @patch("src.extraction.date_verification.pytesseract.image_to_data")
-@patch("src.extraction.date_verification._call_gemini")
-def test_verify_dates_ignores_invalid_llm_response(mock_gemini, mock_data, tmp_path):
+def test_verify_dates_ignores_invalid_llm_response(mock_data, tmp_path):
     """When LLM returns non-year text, the OCR value is kept."""
     image_path = _make_image_with_text(tmp_path, "overleden 1944")
     text_path = tmp_path / "card_back.txt"
     text_path.write_text("overleden 1944")
-    mock_client = MagicMock()
+    backend = MagicMock()
 
     mock_data.return_value = {
         "text": ["overleden", "1944"],
@@ -170,22 +158,21 @@ def test_verify_dates_ignores_invalid_llm_response(mock_gemini, mock_data, tmp_p
         "height": [20, 20],
         "conf": [95, 86],
     }
-    mock_gemini.return_value = _mock_gemini_response("The year shown is 1941")
+    backend.generate_vision.return_value = "The year shown is 1941"
 
-    corrections = verify_dates(image_path, text_path, mock_client)
+    corrections = verify_dates(image_path, text_path, backend)
 
     assert corrections == []
     assert text_path.read_text() == "overleden 1944"
 
 
 @patch("src.extraction.date_verification.pytesseract.image_to_data")
-@patch("src.extraction.date_verification._call_gemini")
-def test_verify_dates_no_stray_crop_files(mock_gemini, mock_data, tmp_path):
+def test_verify_dates_no_stray_crop_files(mock_data, tmp_path):
     """No stray crop files are left after verification."""
     image_path = _make_image_with_text(tmp_path, "1913")
     text_path = tmp_path / "card_back.txt"
     text_path.write_text("1913")
-    mock_client = MagicMock()
+    backend = MagicMock()
 
     mock_data.return_value = {
         "text": ["1913"],
@@ -195,9 +182,9 @@ def test_verify_dates_no_stray_crop_files(mock_gemini, mock_data, tmp_path):
         "height": [20],
         "conf": [95],
     }
-    mock_gemini.return_value = _mock_gemini_response("1913")
+    backend.generate_vision.return_value = "1913"
 
-    verify_dates(image_path, text_path, mock_client)
+    verify_dates(image_path, text_path, backend)
 
     crop_files = list(tmp_path.glob("_crop_*.png"))
     assert crop_files == []

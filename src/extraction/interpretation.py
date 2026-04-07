@@ -4,11 +4,8 @@
 import json
 from pathlib import Path
 
-from google import genai
-from google.genai import types
-
-from src.extraction.gemini import _call_gemini
-from src.extraction.schema import GEMINI_MODEL, PERSON_SCHEMA
+from src.extraction.llm import LLMBackend
+from src.extraction.schema import PERSON_SCHEMA
 
 
 def interpret_text(
@@ -17,12 +14,12 @@ def interpret_text(
     output_path: Path,
     system_prompt: str,
     user_template: str,
-    client: genai.Client,
+    backend: LLMBackend,
 ) -> None:
-    """Interpret OCR text using Gemini and write structured JSON.
+    """Interpret OCR text using an LLM backend and write structured JSON.
 
-    Sends the static system prompt and card-specific user message to Gemini
-    with structured JSON output. Writes the parsed JSON to output_path.
+    Sends the static system prompt and card-specific user message to the
+    backend with structured JSON output. Writes the parsed JSON to output_path.
     Raises on failure (caller handles).
     """
     front_text = front_text_path.read_text() if front_text_path.exists() else ""
@@ -32,24 +29,17 @@ def interpret_text(
         "{back_text}", back_text
     )
 
-    response = _call_gemini(
-        client,
-        model=GEMINI_MODEL,
-        contents=user_message,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=0,
-            max_output_tokens=2048,
-            response_mime_type="application/json",
-            response_json_schema=PERSON_SCHEMA,
-        ),
+    response_text = backend.generate_text(
+        system_prompt, user_message,
+        temperature=0, max_tokens=2048,
+        json_schema=PERSON_SCHEMA,
     )
 
     try:
-        result = json.loads(response.text)
+        result = json.loads(response_text)
     except json.JSONDecodeError as e:
         raise ValueError(
-            f"LLM returned invalid JSON: {response.text[:200]}"
+            f"LLM returned invalid JSON: {response_text[:200]}"
         ) from e
 
     result["source"] = {

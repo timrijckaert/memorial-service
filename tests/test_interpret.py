@@ -1,11 +1,12 @@
 # tests/test_interpret.py
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.extraction.interpretation import interpret_text
+from src.extraction.schema import PERSON_SCHEMA
 
 
 SAMPLE_LLM_RESPONSE = json.dumps({
@@ -32,17 +33,9 @@ USER_TEMPLATE = (
 )
 
 
-def _mock_gemini_response(text: str):
-    """Create a mock Gemini response with a .text attribute."""
-    mock_resp = MagicMock()
-    mock_resp.text = text
-    return mock_resp
-
-
-@patch("src.extraction.interpretation._call_gemini")
-def test_interpret_text_creates_json_file(mock_gemini, tmp_path):
-    mock_gemini.return_value = _mock_gemini_response(SAMPLE_LLM_RESPONSE)
-    mock_client = MagicMock()
+def test_interpret_text_creates_json_file(tmp_path):
+    backend = MagicMock()
+    backend.generate_text.return_value = SAMPLE_LLM_RESPONSE
 
     front_text = tmp_path / "card_front.txt"
     back_text = tmp_path / "card 1_back.txt"
@@ -50,15 +43,14 @@ def test_interpret_text_creates_json_file(mock_gemini, tmp_path):
     back_text.write_text("Dominicus Meganck geboren 1813")
     output = tmp_path / "card.json"
 
-    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, mock_client)
+    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
 
     assert output.exists()
 
 
-@patch("src.extraction.interpretation._call_gemini")
-def test_interpret_text_json_has_required_keys(mock_gemini, tmp_path):
-    mock_gemini.return_value = _mock_gemini_response(SAMPLE_LLM_RESPONSE)
-    mock_client = MagicMock()
+def test_interpret_text_json_has_required_keys(tmp_path):
+    backend = MagicMock()
+    backend.generate_text.return_value = SAMPLE_LLM_RESPONSE
 
     front_text = tmp_path / "card_front.txt"
     back_text = tmp_path / "card 1_back.txt"
@@ -66,7 +58,7 @@ def test_interpret_text_json_has_required_keys(mock_gemini, tmp_path):
     back_text.write_text("Test text")
     output = tmp_path / "card.json"
 
-    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, mock_client)
+    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
 
     result = json.loads(output.read_text())
     assert "person" in result
@@ -74,10 +66,9 @@ def test_interpret_text_json_has_required_keys(mock_gemini, tmp_path):
     assert "source" in result
 
 
-@patch("src.extraction.interpretation._call_gemini")
-def test_interpret_text_includes_source_filenames(mock_gemini, tmp_path):
-    mock_gemini.return_value = _mock_gemini_response(SAMPLE_LLM_RESPONSE)
-    mock_client = MagicMock()
+def test_interpret_text_includes_source_filenames(tmp_path):
+    backend = MagicMock()
+    backend.generate_text.return_value = SAMPLE_LLM_RESPONSE
 
     front_text = tmp_path / "card_front.txt"
     back_text = tmp_path / "card 1_back.txt"
@@ -85,17 +76,16 @@ def test_interpret_text_includes_source_filenames(mock_gemini, tmp_path):
     back_text.write_text("")
     output = tmp_path / "card.json"
 
-    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, mock_client)
+    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
 
     result = json.loads(output.read_text())
     assert result["source"]["front_text_file"] == "card_front.txt"
     assert result["source"]["back_text_file"] == "card 1_back.txt"
 
 
-@patch("src.extraction.interpretation._call_gemini")
-def test_interpret_text_substitutes_placeholders(mock_gemini, tmp_path):
-    mock_gemini.return_value = _mock_gemini_response(SAMPLE_LLM_RESPONSE)
-    mock_client = MagicMock()
+def test_interpret_text_substitutes_placeholders(tmp_path):
+    backend = MagicMock()
+    backend.generate_text.return_value = SAMPLE_LLM_RESPONSE
 
     front_text = tmp_path / "card_front.txt"
     back_text = tmp_path / "card 1_back.txt"
@@ -103,20 +93,18 @@ def test_interpret_text_substitutes_placeholders(mock_gemini, tmp_path):
     back_text.write_text("Achterkant tekst")
     output = tmp_path / "card.json"
 
-    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, mock_client)
+    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
 
-    call_args = mock_gemini.call_args
-    user_message = call_args.kwargs["contents"]
+    user_message = backend.generate_text.call_args.args[1]
     assert "Voorkant tekst" in user_message
     assert "Achterkant tekst" in user_message
     assert "{front_text}" not in user_message
     assert "{back_text}" not in user_message
 
 
-@patch("src.extraction.interpretation._call_gemini")
-def test_interpret_text_invalid_json_raises(mock_gemini, tmp_path):
-    mock_gemini.return_value = _mock_gemini_response("not valid json at all")
-    mock_client = MagicMock()
+def test_interpret_text_invalid_json_raises(tmp_path):
+    backend = MagicMock()
+    backend.generate_text.return_value = "not valid json at all"
 
     front_text = tmp_path / "card_front.txt"
     back_text = tmp_path / "card 1_back.txt"
@@ -125,4 +113,19 @@ def test_interpret_text_invalid_json_raises(mock_gemini, tmp_path):
     output = tmp_path / "card.json"
 
     with pytest.raises(ValueError, match="LLM returned invalid JSON"):
-        interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, mock_client)
+        interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
+
+
+def test_interpret_text_passes_json_schema(tmp_path):
+    backend = MagicMock()
+    backend.generate_text.return_value = SAMPLE_LLM_RESPONSE
+
+    front_text = tmp_path / "card_front.txt"
+    back_text = tmp_path / "card 1_back.txt"
+    front_text.write_text("")
+    back_text.write_text("")
+    output = tmp_path / "card.json"
+
+    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
+
+    assert backend.generate_text.call_args.kwargs["json_schema"] == PERSON_SCHEMA
