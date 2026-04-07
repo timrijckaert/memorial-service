@@ -124,30 +124,83 @@ def extract_text(image_path: Path, output_path: Path) -> None:
     output_path.write_text(_clean_ocr_text(raw))
 
 
-DUTCH_MONTHS = {
-    "januari": "01", "februari": "02", "maart": "03", "april": "04",
-    "mei": "05", "juni": "06", "juli": "07", "augustus": "08",
-    "september": "09", "oktober": "10", "november": "11", "december": "12",
-}
-
-_FILENAME_DATE_RE = re.compile(
-    r"bidprentje\s+(\d{1,2})\s+("
-    + "|".join(DUTCH_MONTHS)
-    + r")\s+(\d{4})",
-    re.IGNORECASE,
-)
+_YEAR_RE = re.compile(r"^\d{4}$")
 
 
-def extract_filename_death_date(filename: str) -> str | None:
-    """Extract the death date from a filename like '... bidprentje 27 februari 1941.jpeg'.
+def verify_dates(image_path: Path, text_path: Path, conflicts_dir: Path | None = None) -> list[str]:
+    """Verify year digits in OCR text by cropping them from the image and asking the LLM.
 
-    Returns ISO date string (YYYY-MM-DD) or None if not parseable.
+    Uses Tesseract's bounding-box data to locate year-like words (4 digits),
+    crops each region, and sends the crop to the LLM for visual verification.
+    If the LLM reads a different year, the text file is updated in place and
+    the crop image is saved to conflicts_dir for manual review.
+
+    Returns a list of corrections made (empty if all years match).
     """
-    m = _FILENAME_DATE_RE.search(filename)
-    if not m:
-        return None
-    day, month_name, year = m.group(1), m.group(2).lower(), m.group(3)
-    return f"{year}-{DUTCH_MONTHS[month_name]}-{int(day):02d}"
+    image = Image.open(image_path)
+    data = pytesseract.image_to_data(image, lang="nld", output_type=pytesseract.Output.DICT)
+
+    # Collect year words and their bounding boxes
+    years: list[dict] = []
+    for i, word in enumerate(data["text"]):
+        clean_word = word.strip().rstrip(",.")
+        if _YEAR_RE.match(clean_word):
+            years.append({
+                "ocr_year": clean_word,
+                "left": data["left"][i],
+                "top": data["top"][i],
+                "width": data["width"][i],
+                "height": data["height"][i],
+            })
+
+    if not years:
+        return []
+
+    corrections = []
+    text = text_path.read_text()
+
+    for entry in years:
+        pad = 10
+        crop = image.crop((
+            max(0, entry["left"] - pad),
+            max(0, entry["top"] - pad),
+            entry["left"] + entry["width"] + pad,
+            entry["top"] + entry["height"] + pad,
+        ))
+
+        # Save crop to a temporary file for the LLM
+        crop_path = text_path.parent / f"_crop_{entry['ocr_year']}.png"
+        crop.save(crop_path)
+
+        try:
+            resp = ollama.chat(
+                model=MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": "Read the number in this image. Reply with ONLY the 4-digit year number, nothing else.",
+                    "images": [str(crop_path)],
+                }],
+                options={"temperature": 0},
+            )
+            llm_year = resp.message.content.strip().rstrip(",.")
+
+            if _YEAR_RE.match(llm_year) and llm_year != entry["ocr_year"]:
+                text = text.replace(entry["ocr_year"], llm_year, 1)
+                corrections.append(f"{entry['ocr_year']} -> {llm_year}")
+
+                # Save the crop for manual review
+                if conflicts_dir:
+                    conflicts_dir.mkdir(exist_ok=True)
+                    stem = image_path.stem
+                    conflict_path = conflicts_dir / f"{stem}_ocr{entry['ocr_year']}_llm{llm_year}.png"
+                    crop.save(conflict_path)
+        finally:
+            crop_path.unlink(missing_ok=True)
+
+    if corrections:
+        text_path.write_text(text)
+
+    return corrections
 
 
 PERSON_SCHEMA = {
@@ -230,6 +283,7 @@ def main() -> None:
     output_dir = script_dir / "output"
     text_dir = output_dir / "text"
     json_dir = output_dir / "json"
+    conflicts_dir = output_dir / "date_conflicts"
     prompt_path = script_dir / "prompts" / "extract_person.txt"
 
     if not input_dir.exists():
@@ -266,6 +320,7 @@ def main() -> None:
     total = len(pairs)
     ok_count = 0
     text_count = 0
+    verify_count = 0
     interpret_count = 0
     width = len(str(total))
 
@@ -298,6 +353,17 @@ def main() -> None:
             all_errors.append(f"{front_path.name} OCR: {e}")
             pair_ok = False
 
+        # Date verification (LLM visual cross-check)
+        if ollama_available and ocr_ok:
+            try:
+                for txt_path, img_path in [(front_text_path, front_path), (back_text_path, back_path)]:
+                    corrections = verify_dates(img_path, txt_path, conflicts_dir)
+                    for c in corrections:
+                        verify_count += 1
+                        print(f"        date fix ({img_path.name}): {c}")
+            except Exception as e:
+                all_errors.append(f"{front_path.name} date verify: {e}")
+
         # LLM Interpretation
         if ollama_available and ocr_ok:
             json_output_path = json_dir / f"{front_path.stem}.json"
@@ -314,7 +380,7 @@ def main() -> None:
         else:
             print(f"[{i:>{width}}/{total}] {front_path.name}  ERROR")
 
-    print(f"\nDone: {ok_count} merged, {text_count} text extracted, {interpret_count} interpreted, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
+    print(f"\nDone: {ok_count} merged, {text_count} text extracted, {verify_count} date{'s' if verify_count != 1 else ''} corrected, {interpret_count} interpreted, {len(all_errors)} error{'s' if len(all_errors) != 1 else ''}")
 
     if all_errors:
         print(f"\nCould not process:")
