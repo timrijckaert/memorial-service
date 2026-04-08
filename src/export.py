@@ -23,6 +23,9 @@ def run_export(json_dir: Path, input_dir: Path, output_dir: Path) -> dict:
     if not card_files:
         return {"exported": 0}
 
+    export_dir = output_dir / "export"
+    export_dir.mkdir(exist_ok=True)
+
     consolidated = {}
     used_names: dict[str, int] = {}
 
@@ -46,7 +49,7 @@ def run_export(json_dir: Path, input_dir: Path, output_dir: Path) -> dict:
         # Stitch or copy image
         front_file = source.get("front_image_file")
         back_file = source.get("back_image_file")
-        output_image = output_dir / f"{display_name}.jpeg"
+        output_image = export_dir / f"{display_name}.jpeg"
 
         if front_file and back_file:
             front_path = input_dir / front_file
@@ -65,7 +68,7 @@ def run_export(json_dir: Path, input_dir: Path, output_dir: Path) -> dict:
         consolidated[display_name] = entry
 
     # Write consolidated JSON
-    memorial_path = output_dir / "memorial_cards.json"
+    memorial_path = export_dir / "memorial_cards.json"
     memorial_path.write_text(
         json.dumps(consolidated, indent=2, ensure_ascii=False)
     )

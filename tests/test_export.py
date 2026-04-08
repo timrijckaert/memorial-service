@@ -57,10 +57,10 @@ def test_export_single_card_with_pair(tmp_path):
 
     # Check stitched image exists
     expected_name = "Meganck Dominicus Kerksken bidprentje 21 december 1913.jpeg"
-    assert (output_dir / expected_name).exists()
+    assert (output_dir / "export" / expected_name).exists()
 
     # Check consolidated JSON
-    memorial = json.loads((output_dir / "memorial_cards.json").read_text())
+    memorial = json.loads((output_dir / "export" / "memorial_cards.json").read_text())
     key = "Meganck Dominicus Kerksken bidprentje 21 december 1913"
     assert key in memorial
     assert memorial[key]["first_name"] == "Dominicus"
@@ -101,7 +101,7 @@ def test_export_single_image_no_back(tmp_path):
 
     assert result["exported"] == 1
     expected_name = "Van den Bruele Frans Haaltert bidprentje 05 januari 1898.jpeg"
-    assert (output_dir / expected_name).exists()
+    assert (output_dir / "export" / expected_name).exists()
 
 
 def test_export_filename_collision(tmp_path):
@@ -133,8 +133,8 @@ def test_export_filename_collision(tmp_path):
 
     assert result["exported"] == 2
     base = "Pieters Jan bidprentje 01 juni 1950"
-    assert (output_dir / f"{base}.jpeg").exists()
-    assert (output_dir / f"{base} (2).jpeg").exists()
+    assert (output_dir / "export" / f"{base}.jpeg").exists()
+    assert (output_dir / "export" / f"{base} (2).jpeg").exists()
 
 
 def test_export_empty_json_dir(tmp_path):
@@ -148,4 +148,4 @@ def test_export_empty_json_dir(tmp_path):
     result = run_export(json_dir, input_dir, output_dir)
 
     assert result["exported"] == 0
-    assert not (output_dir / "memorial_cards.json").exists()
+    assert not (output_dir / "export" / "memorial_cards.json").exists()
