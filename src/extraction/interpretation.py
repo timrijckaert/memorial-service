@@ -44,11 +44,21 @@ def interpret_text(
             f"LLM returned invalid JSON: {response_text[:200]}"
         ) from e
 
-    result["source"] = {
-        "front_text_file": front_text_path.name,
-        "back_text_file": back_text_path.name,
-        "front_image_file": front_image_file,
-        "back_image_file": back_image_file,
-    }
+    # Read existing file (skeleton from match phase) if present
+    existing = {}
+    if output_path.exists():
+        existing = json.loads(output_path.read_text())
 
-    output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+    # Merge extracted data into existing structure
+    existing["person"] = result.get("person", {})
+    existing["notes"] = result.get("notes", [])
+    existing_source = existing.get("source", {})
+    existing_source["front_text_file"] = front_text_path.name
+    existing_source["back_text_file"] = back_text_path.name
+    if front_image_file is not None:
+        existing_source["front_image_file"] = front_image_file
+    if back_image_file is not None:
+        existing_source["back_image_file"] = back_image_file
+    existing["source"] = existing_source
+
+    output_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False))

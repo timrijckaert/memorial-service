@@ -129,3 +129,40 @@ def test_interpret_text_passes_json_schema(tmp_path):
     interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
 
     assert backend.generate_text.call_args.kwargs["json_schema"] == PERSON_SCHEMA
+
+
+def test_interpret_text_merges_into_existing_skeleton(tmp_path):
+    """When output file already exists (skeleton), merge person/notes into it."""
+    backend = MagicMock()
+    backend.generate_text.return_value = SAMPLE_LLM_RESPONSE
+
+    front_text = tmp_path / "card_front.txt"
+    back_text = tmp_path / "card_back.txt"
+    front_text.write_text("Some front text")
+    back_text.write_text("Some back text")
+    output = tmp_path / "card.json"
+
+    # Pre-create skeleton (simulating what match phase writes)
+    skeleton = {
+        "source": {
+            "front_image_file": "scan_047.jpeg",
+            "back_image_file": "scan_047_verso.jpeg",
+        }
+    }
+    output.write_text(json.dumps(skeleton))
+
+    interpret_text(
+        front_text, back_text, output,
+        SYSTEM_PROMPT, USER_TEMPLATE, backend,
+        "scan_047.jpeg", "scan_047_verso.jpeg",
+    )
+
+    result = json.loads(output.read_text())
+    # Person and notes from LLM response
+    assert result["person"]["first_name"] == "Dominicus"
+    assert len(result["notes"]) > 0
+    # Source preserved from skeleton + text files added
+    assert result["source"]["front_image_file"] == "scan_047.jpeg"
+    assert result["source"]["back_image_file"] == "scan_047_verso.jpeg"
+    assert result["source"]["front_text_file"] == "card_front.txt"
+    assert result["source"]["back_text_file"] == "card_back.txt"
