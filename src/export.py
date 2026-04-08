@@ -26,7 +26,7 @@ def run_export(json_dir: Path, input_dir: Path, output_dir: Path) -> dict:
     export_dir = output_dir / "export"
     export_dir.mkdir(exist_ok=True)
 
-    consolidated = {}
+    consolidated: list[dict] = []
     used_names: dict[str, int] = {}
 
     for card_path in card_files:
@@ -66,8 +66,8 @@ def run_export(json_dir: Path, input_dir: Path, output_dir: Path) -> dict:
                 shutil.copy2(front_path, output_image)
 
         # Build flattened entry for consolidated JSON
-        entry = {**person, "notes": notes}
-        consolidated[display_name] = entry
+        entry = {**person, "notes": notes, "image_file": f"{display_name}.jpeg"}
+        consolidated.append(entry)
 
     # Write consolidated JSON
     memorial_path = export_dir / "memorial_cards.json"
