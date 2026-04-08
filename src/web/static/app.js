@@ -186,13 +186,13 @@ function renderMatchUI() {
     unmatchedDiv.appendChild(singlesTitle);
     var sGrid = document.createElement('div');
     sGrid.className = 'match-unmatched-grid';
-    matchData.singles.forEach(function(name) {
+    matchData.singles.forEach(function(single) {
       var card = document.createElement('div');
       card.className = 'match-unmatched-card';
       card.style.borderColor = '#888';
       card.innerHTML =
-        '<img src="/images/' + encodeURIComponent(name) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(name)) + '>' +
-        '<div class="filename">' + name + '</div>' +
+        '<img src="/images/' + encodeURIComponent(single.filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(single.filename)) + '>' +
+        '<div class="filename">' + single.filename + '</div>' +
         '<div class="details" style="color:#888;">Marked as single</div>';
       sGrid.appendChild(card);
     });
@@ -384,7 +384,7 @@ function renderExtractList(cards) {
     item.className = 'card-item' + cls;
 
     const iconMap = { done: '&#10003;', error: '&#10007;', progress: '&#9679;', queued: '&#9675;' };
-    const cardId = c.name || c.card_id || '';
+    const cardId = c.card_id || '';
     const displayName = c.derived_name || cardId;
     let checkbox = '';
     if ((c.icon === 'queued' || c.icon === 'done') && !isPolling) {
@@ -501,9 +501,9 @@ async function pollExtractStatus() {
 
   // Merge: show all cards, overlay worker status on matching ones
   var merged = allCards.map(function(c) {
-    var w = workerMap[c.name];
-    if (w) return { name: c.name, derived_name: c.derived_name, icon: w.icon, statusText: w.statusText, status: w.icon };
-    return { name: c.name, derived_name: c.derived_name, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : c.status, status: c.status };
+    var w = workerMap[c.card_id];
+    if (w) return { card_id: c.card_id, derived_name: c.derived_name, icon: w.icon, statusText: w.statusText, status: w.icon };
+    return { card_id: c.card_id, derived_name: c.derived_name, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : c.status, status: c.status };
   });
   renderExtractList(merged);
 
