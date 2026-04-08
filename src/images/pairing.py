@@ -10,7 +10,7 @@ from PIL import Image
 IMAGE_EXTENSIONS = {".jpeg", ".jpg", ".png"}
 
 _BACK_SUFFIXES = re.compile(
-    r"[\s_]*(1|back|achterkant)\s*$", re.IGNORECASE
+    r"[\s_]+(\(2\)|1|2|back|achterkant|verso|b)\s*$", re.IGNORECASE
 )
 
 

@@ -186,3 +186,27 @@ def test_scan_and_match_includes_metadata(tmp_path):
     assert pair["image_a"]["height"] == 300
     assert pair["image_b"]["width"] == 200
     assert pair["image_b"]["height"] == 300
+
+
+def test_is_back_image_with_suffix_2():
+    assert is_back_image("card_2.jpeg") is True
+
+
+def test_is_back_image_with_suffix_verso():
+    assert is_back_image("card_verso.jpeg") is True
+
+
+def test_is_back_image_with_suffix_b():
+    assert is_back_image("card_b.jpeg") is True
+
+
+def test_is_back_image_with_parenthesized_2():
+    assert is_back_image("card (2).jpeg") is True
+
+
+def test_normalize_removes_verso_suffix():
+    assert normalize_filename("card_verso.jpeg") == "card"
+
+
+def test_normalize_removes_parenthesized_2():
+    assert normalize_filename("card (2).jpeg") == "card"
