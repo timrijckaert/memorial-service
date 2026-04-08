@@ -149,3 +149,31 @@ def test_export_empty_json_dir(tmp_path):
 
     assert result["exported"] == 0
     assert not (output_dir / "export" / "memorial_cards.json").exists()
+
+
+def test_export_skips_skeleton_only_json(tmp_path):
+    """Skeleton JSONs (no person data) are skipped during export."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    json_dir = output_dir / "json"
+    json_dir.mkdir()
+
+    # Skeleton-only (from match phase, not yet extracted)
+    skeleton = {"source": {"front_image_file": "scan.jpeg", "back_image_file": None}}
+    (json_dir / "skeleton-uuid.json").write_text(json.dumps(skeleton))
+
+    # Fully extracted card
+    _make_image(input_dir / "front.jpeg")
+    _make_card_json(
+        json_dir, "extracted-uuid",
+        person={"first_name": "Jan", "last_name": "Pieters", "birth_place": None,
+                "death_date": "1950-06-01", "death_place": None, "birth_date": None,
+                "age_at_death": None, "spouses": []},
+        front_image="front.jpeg",
+    )
+
+    result = run_export(json_dir, input_dir, output_dir)
+
+    assert result["exported"] == 1

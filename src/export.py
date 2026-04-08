@@ -31,6 +31,8 @@ def run_export(json_dir: Path, input_dir: Path, output_dir: Path) -> dict:
 
     for card_path in card_files:
         data = json.loads(card_path.read_text())
+        if "person" not in data:
+            continue  # Skip skeleton-only files
         source = data.get("source", {})
         person = data.get("person", {})
         notes = data.get("notes", [])
