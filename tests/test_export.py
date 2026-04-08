@@ -59,17 +59,19 @@ def test_export_single_card_with_pair(tmp_path):
     expected_name = "Meganck Dominicus Kerksken bidprentje 21 december 1913.jpeg"
     assert (output_dir / "export" / expected_name).exists()
 
-    # Check consolidated JSON
+    # Check consolidated JSON — array of items
     memorial = json.loads((output_dir / "export" / "memorial_cards.json").read_text())
-    key = "Meganck Dominicus Kerksken bidprentje 21 december 1913"
-    assert key in memorial
-    assert memorial[key]["first_name"] == "Dominicus"
-    assert memorial[key]["last_name"] == "Meganck"
-    assert memorial[key]["notes"] == ["test note"]
+    assert isinstance(memorial, list)
+    assert len(memorial) == 1
+    card = memorial[0]
+    assert card["first_name"] == "Dominicus"
+    assert card["last_name"] == "Meganck"
+    assert card["notes"] == ["test note"]
+    assert card["image_file"] == "Meganck Dominicus Kerksken bidprentje 21 december 1913.jpeg"
     # No source metadata in export
-    assert "source" not in memorial[key]
+    assert "source" not in card
     # Flattened person (no nested "person" key)
-    assert "person" not in memorial[key]
+    assert "person" not in card
 
 
 def test_export_single_image_no_back(tmp_path):
