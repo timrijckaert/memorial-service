@@ -142,7 +142,7 @@
   .match-pair-link { display: flex; align-items: center; font-size: 16px; color: #aaa; padding: 0 2px; user-select: none; }
   .match-pair-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 
-  .match-unmatched { margin-top: 8px; }
+  .match-unmatched { margin-bottom: 32px; }
   .match-unmatched-title { font-size: 14px; font-weight: 600; color: #e74c3c; margin-bottom: 12px; }
   .match-unmatched-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
   .match-unmatched-card { background: #fff; border: 1px dashed #e74c3c; border-radius: 6px; padding: 10px; }
