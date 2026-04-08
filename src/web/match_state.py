@@ -82,7 +82,7 @@ class MatchState:
             return {
                 "pairs": [dict(p) for p in self._pairs],
                 "unmatched": [dict(u) for u in self._unmatched],
-                "singles": [s["filename"] for s in self._singles],
+                "singles": [dict(s) for s in self._singles],
                 "confirmed_count": confirmed_count,
                 "needs_review": needs_review,
                 "unmatched_count": len(self._unmatched),
@@ -241,18 +241,21 @@ class MatchState:
 
         return {"status": "confirmed", "count": len(to_stitch)}
 
-    def get_confirmed_items(self) -> tuple[list[tuple[Path, Path]], list[Path]]:
-        """Return confirmed pairs and singles as paths for the extract pipeline."""
+    def get_confirmed_items(self) -> tuple[list[tuple[str, Path, Path]], list[tuple[str, Path]]]:
+        """Return confirmed pairs and singles with card_ids for the extract pipeline."""
         with self._lock:
             pairs = []
             for p in self._pairs:
                 if p["status"] in ("confirmed", "auto_confirmed"):
                     pairs.append((
+                        p["card_id"],
                         self._input_dir / p["image_a"]["filename"],
                         self._input_dir / p["image_b"]["filename"],
                     ))
-            singles = [self._input_dir / s["filename"] for s in self._singles]
-
+            singles = [
+                (s["card_id"], self._input_dir / s["filename"])
+                for s in self._singles
+            ]
         return pairs, singles
 
     def swap(self, filename_a: str, filename_b: str) -> dict:

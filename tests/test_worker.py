@@ -56,7 +56,7 @@ def test_worker_processes_card(mock_ocr, mock_verify, mock_interpret, tmp_path):
 
     worker = ExtractionWorker()
     started = worker.start(
-        [(front, back)], text_dir, json_dir, tmp_path,
+        [("test-uuid-001", front, back)], text_dir, json_dir, tmp_path,
         "system", "template", MagicMock(),
     )
     assert started is True
@@ -68,7 +68,7 @@ def test_worker_processes_card(mock_ocr, mock_verify, mock_interpret, tmp_path):
             break
 
     assert status.status == "idle"
-    assert "Card" in status.done
+    assert "test-uuid-001" in status.done
     assert mock_ocr.call_count == 2  # front + back
     assert mock_verify.call_count == 2  # front + back
     assert mock_interpret.call_count == 1
@@ -86,7 +86,7 @@ def test_worker_reports_ocr_errors(mock_ocr, tmp_path):
 
     worker = ExtractionWorker()
     worker.start(
-        [(front, back)], text_dir, tmp_path, tmp_path,
+        [("err-uuid", front, back)], text_dir, tmp_path, tmp_path,
         None, None, None,
     )
 
@@ -97,7 +97,7 @@ def test_worker_reports_ocr_errors(mock_ocr, tmp_path):
             break
 
     assert len(status.errors) == 1
-    assert status.errors[0].card_id == "Card"
+    assert status.errors[0].card_id == "err-uuid"
     assert status.done == []
 
 
@@ -113,7 +113,7 @@ def test_worker_skips_llm_without_backend(mock_ocr, tmp_path):
 
     worker = ExtractionWorker()
     worker.start(
-        [(front, back)], text_dir, tmp_path, tmp_path,
+        [("no-llm-uuid", front, back)], text_dir, tmp_path, tmp_path,
         None, None, None,
     )
 
@@ -124,7 +124,7 @@ def test_worker_skips_llm_without_backend(mock_ocr, tmp_path):
             break
 
     assert status.status == "idle"
-    assert "Card" in status.done
+    assert "no-llm-uuid" in status.done
     assert mock_ocr.call_count == 2
 
 
@@ -143,11 +143,11 @@ def test_worker_rejects_double_start(tmp_path):
     with patch("src.web.worker.extract_text", side_effect=slow_ocr):
         worker = ExtractionWorker()
         worker.start(
-            [(front, back)], text_dir, tmp_path, tmp_path,
+            [("dbl-uuid", front, back)], text_dir, tmp_path, tmp_path,
             None, None, None,
         )
         second = worker.start(
-            [(front, back)], text_dir, tmp_path, tmp_path,
+            [("dbl-uuid", front, back)], text_dir, tmp_path, tmp_path,
             None, None, None,
         )
 
@@ -166,7 +166,7 @@ def test_worker_cancellation(mock_interpret, mock_verify, tmp_path):
         back = tmp_path / f"{name} 1.jpeg"
         front.touch()
         back.touch()
-        pairs.append((front, back))
+        pairs.append((f"cancel-{name}", front, back))
 
     def slow_ocr(*args, **kwargs):
         time.sleep(0.5)
@@ -206,7 +206,7 @@ def test_worker_processes_multiple_cards(mock_ocr, mock_verify, mock_interpret, 
         back = tmp_path / f"{name} 1.jpeg"
         front.touch()
         back.touch()
-        pairs.append((front, back))
+        pairs.append((f"multi-{name}", front, back))
 
     worker = ExtractionWorker()
     worker.start(
@@ -221,6 +221,6 @@ def test_worker_processes_multiple_cards(mock_ocr, mock_verify, mock_interpret, 
             break
 
     assert status.status == "idle"
-    assert sorted(status.done) == ["Card A", "Card B", "Card C"]
+    assert sorted(status.done) == sorted(["multi-Card A", "multi-Card B", "multi-Card C"])
     assert mock_ocr.call_count == 6
     assert mock_interpret.call_count == 3

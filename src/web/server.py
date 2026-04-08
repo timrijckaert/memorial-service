@@ -89,37 +89,36 @@ class AppHandler(BaseHTTPRequestHandler):
         elif self.path == "/api/extract/cards":
             pairs, singles = self.server.match_state.get_confirmed_items()
             cards = []
-            for front, back in pairs:
-                json_path = json_dir / f"{front.stem}.json"
-                has_json = json_path.exists()
-                derived_name = None
-                if has_json:
-                    card_data = json.loads(json_path.read_text())
-                    derived_name = derive_filename(card_data)
+            for card_id, front, back in pairs:
+                json_path = json_dir / f"{card_id}.json"
+                card_data = json.loads(json_path.read_text()) if json_path.exists() else {}
+                has_person = "person" in card_data
+                derived_name = derive_filename(card_data) if has_person else None
                 cards.append({
-                    "name": front.stem,
+                    "card_id": card_id,
                     "front": front.name,
                     "back": back.name,
-                    "status": "done" if has_json else "pending",
+                    "status": "done" if has_person else "pending",
                     "derived_name": derived_name,
                 })
-            for single in singles:
-                json_path = json_dir / f"{single.stem}.json"
-                has_json = json_path.exists()
-                derived_name = None
-                if has_json:
-                    card_data = json.loads(json_path.read_text())
-                    derived_name = derive_filename(card_data)
+            for card_id, single in singles:
+                json_path = json_dir / f"{card_id}.json"
+                card_data = json.loads(json_path.read_text()) if json_path.exists() else {}
+                has_person = "person" in card_data
+                derived_name = derive_filename(card_data) if has_person else None
                 cards.append({
-                    "name": single.stem,
+                    "card_id": card_id,
                     "front": single.name,
                     "back": None,
-                    "status": "done" if has_json else "pending",
+                    "status": "done" if has_person else "pending",
                     "derived_name": derived_name,
                 })
             self._send_json({"cards": cards})
         elif self.path == "/api/export/count":
-            count = len(list(json_dir.glob("*.json")))
+            count = sum(
+                1 for p in json_dir.glob("*.json")
+                if "person" in json.loads(p.read_text())
+            )
             self._send_json({"count": count})
         else:
             self._send_error(404, "Not found")
@@ -201,10 +200,10 @@ class AppHandler(BaseHTTPRequestHandler):
 
             cards_filter = options.get("cards", None)
             pairs, singles = self.server.match_state.get_confirmed_items()
-            all_items = pairs + [(s, None) for s in singles]
+            all_items = [(cid, f, b) for cid, f, b in pairs] + [(cid, f, None) for cid, f in singles]
             if cards_filter:
                 card_set = set(cards_filter)
-                all_items = [(f, b) for f, b in all_items if f.stem in card_set]
+                all_items = [(cid, f, b) for cid, f, b in all_items if cid in card_set]
             text_dir = output_dir / "text"
             text_dir.mkdir(exist_ok=True)
             json_dir.mkdir(exist_ok=True)
@@ -249,7 +248,7 @@ def make_server(
     server.input_dir = input_dir
     server.output_dir = output_dir
     server.worker = ExtractionWorker()
-    server.match_state = MatchState(input_dir, output_dir)
+    server.match_state = MatchState(input_dir, output_dir, json_dir)
     config_path = input_dir.parent / "config.json"
     server.backend = make_backend(config_path)
     return server

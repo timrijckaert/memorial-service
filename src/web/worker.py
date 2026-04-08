@@ -85,7 +85,7 @@ class ExtractionWorker:
 
     def start(
         self,
-        pairs: list[tuple[Path, Path | None]],
+        pairs: list[tuple[str, Path, Path | None]],
         text_dir: Path,
         json_dir: Path,
         conflicts_dir: Path,
@@ -96,7 +96,7 @@ class ExtractionWorker:
         with self._lock:
             if self._status.status == "running":
                 return False
-            queue_names = [front.stem for front, _ in pairs]
+            queue_names = [card_id for card_id, _, _ in pairs]
             self._status = ExtractionStatus(
                 status="running", queue=queue_names,
             )
@@ -168,8 +168,8 @@ class ExtractionWorker:
     async def _ocr_producer(self, pairs, text_dir, ocr_queue, executor):
         loop = asyncio.get_running_loop()
 
-        async def ocr_one(front_path: Path, back_path: Path | None):
-            card_name = front_path.stem
+        async def ocr_one(card_id: str, front_path: Path, back_path: Path | None):
+            card_name = card_id
             if self._cancel.is_set():
                 return
 
@@ -180,8 +180,8 @@ class ExtractionWorker:
                     CardProgress(card_name, "ocr")
                 )
 
-            front_text_path = text_dir / f"{front_path.stem}_front.txt"
-            back_text_path = text_dir / f"{front_path.stem}_back.txt" if back_path else None
+            front_text_path = text_dir / f"{card_id}_front.txt"
+            back_text_path = text_dir / f"{card_id}_back.txt" if back_path else None
 
             try:
                 tasks = [
@@ -220,7 +220,7 @@ class ExtractionWorker:
                 back_text_path=back_text_path,
             ))
 
-        await asyncio.gather(*(ocr_one(f, b) for f, b in pairs))
+        await asyncio.gather(*(ocr_one(cid, f, b) for cid, f, b in pairs))
         await ocr_queue.put(None)  # sentinel
 
     async def _llm_consumer(self, ocr_queue, executor, json_dir,

@@ -221,6 +221,7 @@ def test_api_match_scan_returns_pairs(tmp_path):
         assert data["pairs"][0]["image_a"]["filename"] == "Card A.jpeg"
         assert data["pairs"][0]["image_b"]["filename"] == "Card A 1.jpeg"
         assert data["pairs"][0]["status"] == "auto_confirmed"
+        assert "card_id" in data["pairs"][0]
     finally:
         server.shutdown()
 
@@ -447,18 +448,24 @@ def test_api_extract_skips_already_extracted(tmp_path):
 
     _create_test_image(input_dir / "Card A.jpeg", color="red")
     _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
-    _create_test_image(output_dir / "Card A.jpeg", color="red")
-    # Already extracted
-    (json_dir / "Card A.json").write_text('{"person": {}, "notes": [], "source": {}}')
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
-        # Scan to populate match state (auto-confirms the pair)
-        urlopen(f"{base}/api/match/scan")
+        scan_resp = urlopen(f"{base}/api/match/scan")
+        scan_data = json.loads(scan_resp.read())
+        card_id = scan_data["pairs"][0]["card_id"]
+
+        # Enrich skeleton to simulate completed extraction
+        json_path = json_dir / f"{card_id}.json"
+        data = json.loads(json_path.read_text())
+        data["person"] = {"first_name": "Card", "last_name": "A"}
+        data["notes"] = []
+        json_path.write_text(json.dumps(data))
+
         resp = urlopen(f"{base}/api/extract/cards")
-        data = json.loads(resp.read())
-        assert len(data["cards"]) == 1
-        assert data["cards"][0]["status"] == "done"
+        cards = json.loads(resp.read())
+        assert len(cards["cards"]) == 1
+        assert cards["cards"][0]["status"] == "done"
     finally:
         server.shutdown()
 
@@ -483,7 +490,7 @@ def test_api_extract_cards_lists_eligible(tmp_path):
         resp = urlopen(f"{base}/api/extract/cards")
         data = json.loads(resp.read())
         assert len(data["cards"]) == 1
-        assert data["cards"][0]["name"] == "Card A"
+        assert "card_id" in data["cards"][0]
         assert data["cards"][0]["status"] == "pending"
     finally:
         server.shutdown()
@@ -497,8 +504,9 @@ def test_api_export_count_returns_json_count(tmp_path):
     output_dir = tmp_path / "output"
     output_dir.mkdir()
 
-    (json_dir / "card1.json").write_text('{"person": {}, "notes": [], "source": {}}')
-    (json_dir / "card2.json").write_text('{"person": {}, "notes": [], "source": {}}')
+    (json_dir / "card1.json").write_text('{"person": {"first_name": "A"}, "notes": [], "source": {}}')
+    (json_dir / "card2.json").write_text('{"person": {"first_name": "B"}, "notes": [], "source": {}}')
+    (json_dir / "skeleton.json").write_text('{"source": {"front_image_file": "x.jpeg"}}')
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:

@@ -89,14 +89,15 @@ def test_mark_single(tmp_path):
     _make_test_dir(tmp_path)
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    state = MatchState(tmp_path, output_dir)
+    json_dir = output_dir / "json"
+    state = MatchState(tmp_path, output_dir, json_dir)
     state.scan()
 
     result = state.mark_single("orphan.jpeg")
 
     assert result["status"] == "single"
     snapshot = state.get_snapshot()
-    assert "orphan.jpeg" in snapshot["singles"]
+    assert any(s["filename"] == "orphan.jpeg" for s in snapshot["singles"])
     unmatched_names = {u["filename"] for u in snapshot["unmatched"]}
     assert "orphan.jpeg" not in unmatched_names
 
@@ -131,7 +132,8 @@ def test_get_confirmed_pairs_for_extract(tmp_path):
     _make_test_dir(tmp_path)
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    state = MatchState(tmp_path, output_dir)
+    json_dir = output_dir / "json"
+    state = MatchState(tmp_path, output_dir, json_dir)
     state.scan()
     state.mark_single("orphan.jpeg")
 
@@ -139,7 +141,14 @@ def test_get_confirmed_pairs_for_extract(tmp_path):
 
     assert len(pairs) == 2
     assert len(singles) == 1
-    assert singles[0].name == "orphan.jpeg"
+    # Each pair is (card_id, front_path, back_path)
+    card_id, front, back = pairs[0]
+    uuid.UUID(card_id)  # valid UUID
+    assert front.name.endswith(".jpeg")
+    # Single is (card_id, path)
+    single_id, single_path = singles[0]
+    uuid.UUID(single_id)
+    assert single_path.name == "orphan.jpeg"
 
 
 def test_confirm_creates_uuid_and_skeleton(tmp_path):
