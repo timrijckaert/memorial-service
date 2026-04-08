@@ -1,7 +1,9 @@
 # src/web/match_state.py
 """In-memory state management for the match phase."""
 
+import json
 import threading
+import uuid
 from pathlib import Path
 
 from src.images.pairing import scan_and_match, read_image_metadata, similarity_score, normalize_filename
@@ -11,14 +13,29 @@ from src.images.stitching import stitch_pair
 class MatchState:
     """Manages match phase state: pairs, unmatched images, singles, confirmations."""
 
-    def __init__(self, input_dir: Path, output_dir: Path):
+    def __init__(self, input_dir: Path, output_dir: Path, json_dir: Path | None = None):
         self._input_dir = input_dir
         self._output_dir = output_dir
+        self._json_dir = json_dir or (output_dir / "json")
         self._lock = threading.Lock()
         self._pairs: list[dict] = []
         self._unmatched: list[dict] = []
-        self._singles: list[str] = []
+        self._singles: list[dict] = []
         self._metadata: dict[str, dict] = {}
+
+    def _assign_card_id(self, front_file: str, back_file: str | None) -> str:
+        """Generate a UUID4, write skeleton JSON to json_dir, return UUID string."""
+        card_id = str(uuid.uuid4())
+        self._json_dir.mkdir(parents=True, exist_ok=True)
+        skeleton = {
+            "source": {
+                "front_image_file": front_file,
+                "back_image_file": back_file,
+            }
+        }
+        skeleton_path = self._json_dir / f"{card_id}.json"
+        skeleton_path.write_text(json.dumps(skeleton, indent=2))
+        return card_id
 
     def scan(self) -> dict:
         """Scan input directory and run fuzzy matching. Returns snapshot."""
@@ -34,6 +51,20 @@ class MatchState:
                 self._metadata[pair["image_b"]["filename"]] = pair["image_b"]
             for item in self._unmatched:
                 self._metadata[item["filename"]] = item
+
+            # Assign UUIDs to auto-confirmed pairs
+            pairs_needing_ids = [
+                p for p in self._pairs
+                if p["status"] == "auto_confirmed" and "card_id" not in p
+            ]
+
+        # Write skeleton JSONs outside the lock
+        for pair in pairs_needing_ids:
+            card_id = self._assign_card_id(
+                pair["image_a"]["filename"],
+                pair["image_b"]["filename"],
+            )
+            pair["card_id"] = card_id
 
         return self.get_snapshot()
 
@@ -51,7 +82,7 @@ class MatchState:
             return {
                 "pairs": [dict(p) for p in self._pairs],
                 "unmatched": [dict(u) for u in self._unmatched],
-                "singles": list(self._singles),
+                "singles": [s["filename"] for s in self._singles],
                 "confirmed_count": confirmed_count,
                 "needs_review": needs_review,
                 "unmatched_count": len(self._unmatched),
@@ -61,13 +92,24 @@ class MatchState:
     def confirm(self, filename_a: str, filename_b: str) -> dict:
         """Confirm a pair and trigger stitching."""
         with self._lock:
+            matched_pair = None
             for pair in self._pairs:
                 a, b = pair["image_a"]["filename"], pair["image_b"]["filename"]
                 if {a, b} == {filename_a, filename_b}:
                     pair["status"] = "confirmed"
+                    matched_pair = pair
                     break
             else:
                 return {"status": "not_found"}
+
+        # Assign UUID if not already present (e.g. from auto-confirm)
+        if "card_id" not in matched_pair:
+            card_id = self._assign_card_id(
+                matched_pair["image_a"]["filename"],
+                matched_pair["image_b"]["filename"],
+            )
+            matched_pair["card_id"] = card_id
+        card_id = matched_pair["card_id"]
 
         # Stitch in background-safe way (outside lock)
         path_a = self._input_dir / filename_a
@@ -79,10 +121,11 @@ class MatchState:
         except Exception:
             pass  # Stitching failure doesn't block confirmation
 
-        return {"status": "confirmed"}
+        return {"status": "confirmed", "card_id": card_id}
 
     def unmatch(self, filename_a: str, filename_b: str) -> dict:
         """Break a pair, returning both images to unmatched."""
+        removed_card_id = None
         with self._lock:
             to_remove = None
             for i, pair in enumerate(self._pairs):
@@ -95,8 +138,15 @@ class MatchState:
                 return {"status": "not_found"}
 
             pair = self._pairs.pop(to_remove)
+            removed_card_id = pair.get("card_id")
             self._unmatched.append(pair["image_a"])
             self._unmatched.append(pair["image_b"])
+
+        # Delete skeleton JSON outside the lock
+        if removed_card_id:
+            skeleton_path = self._json_dir / f"{removed_card_id}.json"
+            if skeleton_path.exists():
+                skeleton_path.unlink()
 
         return {"status": "unmatched"}
 
@@ -149,13 +199,17 @@ class MatchState:
                 return {"status": "not_found"}
 
             self._unmatched = new_unmatched
-            self._singles.append(filename)
 
-        return {"status": "single"}
+        card_id = self._assign_card_id(filename, None)
+        with self._lock:
+            self._singles.append({"filename": filename, "card_id": card_id})
+
+        return {"status": "single", "card_id": card_id}
 
     def confirm_all(self) -> dict:
         """Confirm all suggested pairs."""
         to_stitch = []
+        newly_confirmed = []
         with self._lock:
             for pair in self._pairs:
                 if pair["status"] == "suggested":
@@ -164,6 +218,16 @@ class MatchState:
                         pair["image_a"]["filename"],
                         pair["image_b"]["filename"],
                     ))
+                    if "card_id" not in pair:
+                        newly_confirmed.append(pair)
+
+        # Assign UUIDs outside the lock
+        for pair in newly_confirmed:
+            card_id = self._assign_card_id(
+                pair["image_a"]["filename"],
+                pair["image_b"]["filename"],
+            )
+            pair["card_id"] = card_id
 
         for filename_a, filename_b in to_stitch:
             path_a = self._input_dir / filename_a
@@ -187,7 +251,7 @@ class MatchState:
                         self._input_dir / p["image_a"]["filename"],
                         self._input_dir / p["image_b"]["filename"],
                     ))
-            singles = [self._input_dir / name for name in self._singles]
+            singles = [self._input_dir / s["filename"] for s in self._singles]
 
         return pairs, singles
 
