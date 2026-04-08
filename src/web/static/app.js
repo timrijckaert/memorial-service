@@ -52,6 +52,8 @@ async function loadMatchState() {
     matchData = data;
     document.getElementById('scan-btn').textContent = 'Re-scan';
     renderMatchUI();
+  } else {
+    await scanImages();
   }
 }
 
@@ -76,6 +78,20 @@ function scoreClass(score) {
 
 function escapeAttr(s) {
   return s.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+}
+
+function openOverlay(src) {
+  var overlay = document.getElementById('image-overlay');
+  document.getElementById('overlay-img').src = src;
+  overlay.classList.add('visible');
+}
+
+function closeOverlay() {
+  document.getElementById('image-overlay').classList.remove('visible');
+}
+
+function clickableImg(src) {
+  return 'onclick="event.stopPropagation(); openOverlay(\'' + escapeAttr(src) + '\')"';
 }
 
 function renderMatchUI() {
@@ -114,7 +130,7 @@ function renderMatchUI() {
       '</div>' +
       '<div class="match-pair-images">' +
         '<div class="match-image-card">' +
-          '<img src="/images/' + encodeURIComponent(pair.image_a.filename) + '" alt="">' +
+          '<img src="/images/' + encodeURIComponent(pair.image_a.filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(pair.image_a.filename)) + '>' +
           '<div class="match-image-meta">' +
             '<div class="filename">' + pair.image_a.filename + '</div>' +
             '<div class="details">' + formatMeta(pair.image_a) + '</div>' +
@@ -122,7 +138,7 @@ function renderMatchUI() {
         '</div>' +
         '<div class="match-pair-link">\u27f7</div>' +
         '<div class="match-image-card">' +
-          '<img src="/images/' + encodeURIComponent(pair.image_b.filename) + '" alt="">' +
+          '<img src="/images/' + encodeURIComponent(pair.image_b.filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(pair.image_b.filename)) + '>' +
           '<div class="match-image-meta">' +
             '<div class="filename">' + pair.image_b.filename + '</div>' +
             '<div class="details">' + formatMeta(pair.image_b) + '</div>' +
@@ -148,7 +164,7 @@ function renderMatchUI() {
       var card = document.createElement('div');
       card.className = 'match-unmatched-card';
       card.innerHTML =
-        '<img src="/images/' + encodeURIComponent(img.filename) + '" alt="">' +
+        '<img src="/images/' + encodeURIComponent(img.filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(img.filename)) + '>' +
         '<div class="filename">' + img.filename + '</div>' +
         '<div class="details">' + formatMeta(img) + '</div>' +
         '<button class="btn btn-primary" style="font-size:11px; padding:4px 8px;" onclick="openFindMatch(\'' + escapeAttr(img.filename) + '\')">Find match...</button>';
@@ -172,7 +188,7 @@ function renderMatchUI() {
       card.className = 'match-unmatched-card';
       card.style.borderColor = '#888';
       card.innerHTML =
-        '<img src="/images/' + encodeURIComponent(name) + '" alt="">' +
+        '<img src="/images/' + encodeURIComponent(name) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(name)) + '>' +
         '<div class="filename">' + name + '</div>' +
         '<div class="details" style="color:#888;">Marked as single</div>';
       sGrid.appendChild(card);
@@ -227,7 +243,7 @@ async function openFindMatch(filename) {
   // Show selected image
   var selectedDiv = document.getElementById('find-match-selected');
   selectedDiv.innerHTML =
-    '<img src="/images/' + encodeURIComponent(filename) + '" alt="">' +
+    '<img src="/images/' + encodeURIComponent(filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(filename)) + '>' +
     '<div><div style="font-weight:600;">' + filename + '</div></div>';
 
   // Fetch scores
@@ -249,7 +265,7 @@ function renderFindMatchCandidates(candidates) {
     var div = document.createElement('div');
     div.className = 'find-match-candidate';
     div.innerHTML =
-      '<img src="/images/' + encodeURIComponent(c.filename) + '" alt="">' +
+      '<img src="/images/' + encodeURIComponent(c.filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(c.filename)) + '>' +
       '<div class="info">' +
         '<div class="filename">' + c.filename + '</div>' +
         '<div class="details">' + formatMeta(c) + '</div>' +
@@ -276,6 +292,12 @@ function filterFindMatch() {
 
 async function manualPair(a, b) {
   await fetch('/api/match/pair', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_a: a, image_b: b }),
+  });
+  // Auto-confirm the manual pair so user doesn't have to confirm again
+  await fetch('/api/match/confirm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_a: a, image_b: b }),

@@ -25,8 +25,8 @@
       <button id="proceed-extract-btn" class="btn btn-success" onclick="showSection('extract')" style="display:none;">Proceed to Extract</button>
     </div>
   </div>
-  <div id="match-pair-list" class="match-pair-list"></div>
   <div id="match-unmatched" class="match-unmatched"></div>
+  <div id="match-pair-list" class="match-pair-list"></div>
   <!-- Find Match panel (hidden by default) -->
   <div id="find-match-panel" class="find-match-panel" style="display:none;">
     <div class="find-match-header">
@@ -93,6 +93,11 @@
     </div>
     <div id="no-cards" class="no-cards-msg" style="display:none;">No cards to review. Run extraction first.</div>
   </div>
+</div>
+
+<!-- Image overlay -->
+<div id="image-overlay" class="image-overlay" onclick="closeOverlay()">
+  <img id="overlay-img" src="" alt="">
 </div>
 
 <script src="/static/app.js"></script>
