@@ -385,7 +385,7 @@ function renderExtractList(cards) {
 
     const iconMap = { done: '&#10003;', error: '&#10007;', progress: '&#9679;', queued: '&#9675;' };
     const cardId = c.card_id || '';
-    const displayName = c.derived_name || cardId;
+    const displayName = c.derived_name || [c.front, c.back].filter(Boolean).join(', ') || cardId;
     let checkbox = '';
     if ((c.icon === 'queued' || c.icon === 'done') && !isPolling) {
       checkbox = '<input type="checkbox" class="extract-check" data-card="' + cardId.replace(/"/g, '&quot;') + '" onchange="updateExtractBtn()" style="margin-right:4px;">';
@@ -502,8 +502,8 @@ async function pollExtractStatus() {
   // Merge: show all cards, overlay worker status on matching ones
   var merged = allCards.map(function(c) {
     var w = workerMap[c.card_id];
-    if (w) return { card_id: c.card_id, derived_name: c.derived_name, icon: w.icon, statusText: w.statusText, status: w.icon };
-    return { card_id: c.card_id, derived_name: c.derived_name, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : c.status, status: c.status };
+    if (w) return { card_id: c.card_id, derived_name: c.derived_name, front: c.front, back: c.back, icon: w.icon, statusText: w.statusText, status: w.icon };
+    return { card_id: c.card_id, derived_name: c.derived_name, front: c.front, back: c.back, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : c.status, status: c.status };
   });
   renderExtractList(merged);
 
