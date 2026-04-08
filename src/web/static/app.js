@@ -12,6 +12,7 @@ async function showSection(name) {
   if (name === 'match') await loadMatchState();
   if (name === 'extract') await loadExtractCards();
   if (name === 'review') await initReview();
+  updateExportCount();
 }
 
 async function handleHash() {
@@ -23,6 +24,7 @@ async function handleHash() {
   } else {
     await showSection(hash);
   }
+  updateExportCount();
 }
 
 window.addEventListener('hashchange', handleHash);
@@ -670,6 +672,33 @@ async function approveCard() {
   btn.textContent = 'Saved!';
   btn.classList.remove('btn-primary');
   btn.classList.add('btn-success');
+}
+
+/* ---- Export ---- */
+async function updateExportCount() {
+  const resp = await fetch('/api/export/count');
+  const data = await resp.json();
+  const btn = document.getElementById('export-btn');
+  btn.textContent = 'Export (' + data.count + ')';
+  btn.disabled = data.count === 0;
+}
+
+async function triggerExport() {
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  btn.textContent = 'Exporting...';
+
+  const resp = await fetch('/api/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  const data = await resp.json();
+
+  btn.textContent = 'Exported ' + data.exported + ' cards!';
+  setTimeout(function() {
+    updateExportCount();
+  }, 2000);
 }
 
 /* ---- Init ---- */
