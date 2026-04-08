@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from src.extraction import make_backend
+from src.export import run_export
 from src.images.stitching import stitch_pair
 from src.web.match_state import MatchState
 from src.review import list_cards, load_card, save_card
@@ -103,6 +104,9 @@ class AppHandler(BaseHTTPRequestHandler):
                     "status": "done" if has_json else "pending",
                 })
             self._send_json({"cards": cards})
+        elif self.path == "/api/export/count":
+            count = len(list(json_dir.glob("*.json")))
+            self._send_json({"count": count})
         else:
             self._send_error(404, "Not found")
 
@@ -215,6 +219,9 @@ class AppHandler(BaseHTTPRequestHandler):
         elif self.path == "/api/extract/cancel":
             self.server.worker.cancel()
             self._send_json({"status": "cancelling"})
+        elif self.path == "/api/export":
+            result = run_export(json_dir, input_dir, output_dir)
+            self._send_json(result)
         else:
             self._send_error(404, "Not found")
 

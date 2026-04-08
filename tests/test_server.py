@@ -489,6 +489,26 @@ def test_api_extract_cards_lists_eligible(tmp_path):
         server.shutdown()
 
 
+def test_api_export_count_returns_json_count(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    (json_dir / "card1.json").write_text('{"person": {}, "notes": [], "source": {}}')
+    (json_dir / "card2.json").write_text('{"person": {}, "notes": [], "source": {}}')
+
+    server, base = _start_test_server(json_dir, input_dir, output_dir)
+    try:
+        resp = urlopen(f"{base}/api/export/count")
+        data = json.loads(resp.read())
+        assert data["count"] == 2
+    finally:
+        server.shutdown()
+
+
 def test_html_contains_navigation_tabs(tmp_path):
     json_dir = tmp_path / "json"
     json_dir.mkdir()
