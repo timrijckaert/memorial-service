@@ -191,6 +191,16 @@ class MatchState:
 
         return pairs, singles
 
+    def swap(self, filename_a: str, filename_b: str) -> dict:
+        """Swap image_a and image_b in a pair."""
+        with self._lock:
+            for pair in self._pairs:
+                a, b = pair["image_a"]["filename"], pair["image_b"]["filename"]
+                if {a, b} == {filename_a, filename_b}:
+                    pair["image_a"], pair["image_b"] = pair["image_b"], pair["image_a"]
+                    return {"status": "swapped"}
+            return {"status": "not_found"}
+
     def get_scores_for(self, filename: str) -> list[dict]:
         """Get similarity scores between a given file and all other unmatched files."""
         with self._lock:

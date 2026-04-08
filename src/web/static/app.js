@@ -136,7 +136,7 @@ function renderMatchUI() {
             '<div class="details">' + formatMeta(pair.image_a) + '</div>' +
           '</div>' +
         '</div>' +
-        '<div class="match-pair-link">\u27f7</div>' +
+        '<div class="match-pair-link" title="Swap order" onclick="swapPair(\'' + ea + '\', \'' + eb + '\')">\u21c4</div>' +
         '<div class="match-image-card">' +
           '<img src="/images/' + encodeURIComponent(pair.image_b.filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(pair.image_b.filename)) + '>' +
           '<div class="match-image-meta">' +
@@ -224,6 +224,17 @@ async function confirmAllPairs() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
+  });
+  var resp = await fetch('/api/match/state');
+  matchData = await resp.json();
+  renderMatchUI();
+}
+
+async function swapPair(a, b) {
+  await fetch('/api/match/swap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_a: a, image_b: b }),
   });
   var resp = await fetch('/api/match/state');
   matchData = await resp.json();

@@ -161,6 +161,12 @@ class AppHandler(BaseHTTPRequestHandler):
             data = json.loads(body)
             result = self.server.match_state.mark_single(data["filename"])
             self._send_json(result)
+        elif self.path == "/api/match/swap":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            result = self.server.match_state.swap(data["image_a"], data["image_b"])
+            self._send_json(result)
         elif self.path == "/api/match/scores":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
