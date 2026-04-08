@@ -1,5 +1,21 @@
 # tests/test_pairing.py
-from src.images.pairing import normalize_filename, similarity_score
+from src.images.pairing import is_back_image, normalize_filename, similarity_score
+
+
+def test_is_back_image_with_suffix_1():
+    assert is_back_image("Person Name 1.jpeg") is True
+
+
+def test_is_back_image_with_suffix_back():
+    assert is_back_image("Person_Name_back.jpeg") is True
+
+
+def test_is_back_image_with_suffix_achterkant():
+    assert is_back_image("bidprentje_achterkant.jpeg") is True
+
+
+def test_is_back_image_front_scan():
+    assert is_back_image("Person Name.jpeg") is False
 
 
 def test_normalize_strips_extension():
@@ -108,6 +124,9 @@ def test_scan_and_match_obvious_pair(tmp_path):
     pair = result["pairs"][0]
     assert pair["score"] > 80
     assert pair["status"] == "auto_confirmed"
+    # Front (no suffix) should be image_a, back ("1" suffix) should be image_b
+    assert pair["image_a"]["filename"] == "Person A bidprentje 1920.jpeg"
+    assert pair["image_b"]["filename"] == "Person A bidprentje 1920 1.jpeg"
 
 
 def test_scan_and_match_low_score_not_auto_confirmed(tmp_path):
@@ -131,12 +150,10 @@ def test_scan_and_match_multiple_pairs_greedy(tmp_path):
 
     assert len(result["pairs"]) == 2
     assert len(result["unmatched"]) == 0
-    names = {
-        (p["image_a"]["filename"], p["image_b"]["filename"])
-        for p in result["pairs"]
-    }
-    assert ("De Smet Maria 1945.jpeg", "De Smet Maria 1945 1.jpeg") in names or \
-           ("De Smet Maria 1945 1.jpeg", "De Smet Maria 1945.jpeg") in names
+    for p in result["pairs"]:
+        # Front (no suffix) should always be image_a
+        assert not is_back_image(p["image_a"]["filename"])
+        assert is_back_image(p["image_b"]["filename"])
 
 
 def test_scan_and_match_odd_image_out(tmp_path):

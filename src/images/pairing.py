@@ -14,6 +14,12 @@ _BACK_SUFFIXES = re.compile(
 )
 
 
+def is_back_image(filename: str) -> bool:
+    """Check if a filename looks like a back-side scan."""
+    stem = Path(filename).stem
+    return bool(_BACK_SUFFIXES.search(stem))
+
+
 def normalize_filename(filename: str) -> str:
     """Normalize a filename for fuzzy comparison.
 
@@ -121,9 +127,13 @@ def scan_and_match(
         if name_a in paired or name_b in paired:
             continue
         status = "auto_confirmed" if score >= auto_confirm_threshold else "suggested"
+        # Put the back image in image_b (front = image_a)
+        front, back = name_a, name_b
+        if is_back_image(name_a) and not is_back_image(name_b):
+            front, back = name_b, name_a
         pairs.append({
-            "image_a": file_info[name_a]["metadata"],
-            "image_b": file_info[name_b]["metadata"],
+            "image_a": file_info[front]["metadata"],
+            "image_b": file_info[back]["metadata"],
             "score": score,
             "status": status,
         })
