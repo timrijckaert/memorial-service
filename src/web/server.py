@@ -71,6 +71,7 @@ class AppHandler(BaseHTTPRequestHandler):
             if result is None:
                 self._send_error(404, "Card not found")
             else:
+                result["derived_name"] = derive_filename(result["data"])
                 self._send_json(result)
         elif self.path.startswith("/images/"):
             filename = unquote(self.path[len("/images/"):])

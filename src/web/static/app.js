@@ -567,6 +567,7 @@ async function loadReviewCard(index) {
   reviewCurrentCard = await resp.json();
 
   document.getElementById('review-counter').textContent = (index + 1) + ' / ' + reviewCards.length;
+  document.getElementById('review-derived-name').textContent = reviewCurrentCard.derived_name || '';
   document.getElementById('prev-btn').disabled = index === 0;
   document.getElementById('next-btn').disabled = index === reviewCards.length - 1;
 
@@ -672,6 +673,32 @@ async function approveCard() {
   btn.textContent = 'Saved!';
   btn.classList.remove('btn-primary');
   btn.classList.add('btn-success');
+}
+
+function computeDerivedName() {
+  var months = {
+    '01': 'januari', '02': 'februari', '03': 'maart', '04': 'april',
+    '05': 'mei', '06': 'juni', '07': 'juli', '08': 'augustus',
+    '09': 'september', '10': 'oktober', '11': 'november', '12': 'december'
+  };
+  var parts = [];
+  var lastName = document.getElementById('f-last_name').value.trim();
+  var firstName = document.getElementById('f-first_name').value.trim();
+  var birthPlace = document.getElementById('f-birth_place').value.trim();
+  var deathDate = document.getElementById('f-death_date').value.trim();
+
+  if (lastName) parts.push(lastName);
+  if (firstName) parts.push(firstName);
+  if (birthPlace) parts.push(birthPlace);
+  parts.push('bidprentje');
+
+  if (deathDate && deathDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    var dateParts = deathDate.split('-');
+    var month = months[dateParts[1]];
+    if (month) parts.push(dateParts[2] + ' ' + month + ' ' + dateParts[0]);
+  }
+
+  document.getElementById('review-derived-name').textContent = parts.join(' ');
 }
 
 /* ---- Export ---- */
