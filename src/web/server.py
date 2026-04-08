@@ -10,6 +10,7 @@ from urllib.parse import unquote
 from src.extraction import make_backend
 from src.export import run_export
 from src.images.stitching import stitch_pair
+from src.naming import derive_filename
 from src.web.match_state import MatchState
 from src.review import list_cards, load_card, save_card
 from src.web.worker import ExtractionWorker
@@ -88,20 +89,32 @@ class AppHandler(BaseHTTPRequestHandler):
             pairs, singles = self.server.match_state.get_confirmed_items()
             cards = []
             for front, back in pairs:
-                has_json = (json_dir / f"{front.stem}.json").exists()
+                json_path = json_dir / f"{front.stem}.json"
+                has_json = json_path.exists()
+                derived_name = None
+                if has_json:
+                    card_data = json.loads(json_path.read_text())
+                    derived_name = derive_filename(card_data)
                 cards.append({
                     "name": front.stem,
                     "front": front.name,
                     "back": back.name,
                     "status": "done" if has_json else "pending",
+                    "derived_name": derived_name,
                 })
             for single in singles:
-                has_json = (json_dir / f"{single.stem}.json").exists()
+                json_path = json_dir / f"{single.stem}.json"
+                has_json = json_path.exists()
+                derived_name = None
+                if has_json:
+                    card_data = json.loads(json_path.read_text())
+                    derived_name = derive_filename(card_data)
                 cards.append({
                     "name": single.stem,
                     "front": single.name,
                     "back": None,
                     "status": "done" if has_json else "pending",
+                    "derived_name": derived_name,
                 })
             self._send_json({"cards": cards})
         elif self.path == "/api/export/count":
