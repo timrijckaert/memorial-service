@@ -136,7 +136,7 @@ function renderMatchUI() {
             '<div class="details">' + formatMeta(pair.image_a) + '</div>' +
           '</div>' +
         '</div>' +
-        '<div class="match-pair-link" title="Swap order" onclick="swapPair(\'' + ea + '\', \'' + eb + '\')">\u21c4</div>' +
+        '<div class="match-pair-link">\u21c4</div>' +
         '<div class="match-image-card">' +
           '<img src="/images/' + encodeURIComponent(pair.image_b.filename) + '" alt="" ' + clickableImg('/images/' + encodeURIComponent(pair.image_b.filename)) + '>' +
           '<div class="match-image-meta">' +
@@ -146,6 +146,7 @@ function renderMatchUI() {
         '</div>' +
       '</div>' +
       '<div class="match-pair-actions">' +
+        '<button class="btn" style="border:1px solid #ccc; background:#fff; color:#555;" onclick="swapPair(\'' + ea + '\', \'' + eb + '\')">Swap</button>' +
         '<button class="btn btn-danger" onclick="unmatchPair(\'' + ea + '\', \'' + eb + '\')">Unmatch</button>' +
         (isConfirmed ? '' : '<button class="btn btn-success" onclick="confirmPair(\'' + ea + '\', \'' + eb + '\')">Confirm \u2713</button>') +
       '</div>';
@@ -239,6 +240,16 @@ async function swapPair(a, b) {
   var resp = await fetch('/api/match/state');
   matchData = await resp.json();
   renderMatchUI();
+  // Flash the swapped pair to give visual feedback
+  var rows = document.querySelectorAll('.match-pair-row');
+  rows.forEach(function(row) {
+    // b is now image_a after swap
+    if (row.querySelector('.filename') && row.querySelector('.filename').textContent === b) {
+      row.style.transition = 'background 0.3s';
+      row.style.background = '#e8f5e9';
+      setTimeout(function() { row.style.background = '#fff'; }, 600);
+    }
+  });
 }
 
 async function openFindMatch(filename) {

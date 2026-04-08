@@ -121,7 +121,7 @@
   .match-summary .unmatched-count { color: #e74c3c; }
   .match-actions { display: flex; gap: 8px; }
 
-  .match-pair-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .match-pair-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 12px; margin-bottom: 24px; }
 
   .match-pair-row { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; }
   .match-pair-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -132,15 +132,14 @@
   .match-status-text { font-size: 13px; }
   .match-status-text.auto { color: #27ae60; }
   .match-status-text.review { color: #e67e22; }
-  .match-pair-images { display: flex; gap: 8px; align-items: flex-start; flex: 1; }
+  .match-pair-images { display: flex; gap: 8px; align-items: center; flex: 1; }
   .match-image-card { flex: 1; background: #f8f8f8; border-radius: 6px; padding: 8px; min-width: 0; }
   .match-image-card img { width: 100%; object-fit: contain; border-radius: 4px; background: #eee; cursor: pointer; }
   .match-image-card img:hover { opacity: 0.8; }
   .match-image-meta { margin-top: 6px; font-size: 11px; }
   .match-image-meta .filename { color: #333; word-break: break-all; }
   .match-image-meta .details { color: #888; margin-top: 2px; }
-  .match-pair-link { display: flex; align-items: center; font-size: 18px; color: #888; padding: 4px 6px; cursor: pointer; border-radius: 4px; user-select: none; }
-  .match-pair-link:hover { background: #e8e8e8; color: #333; }
+  .match-pair-link { display: flex; align-items: center; font-size: 16px; color: #aaa; padding: 0 2px; user-select: none; }
   .match-pair-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 
   .match-unmatched { margin-top: 8px; }
