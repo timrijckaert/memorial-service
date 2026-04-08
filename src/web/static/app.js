@@ -384,20 +384,20 @@ function renderExtractList(cards) {
     item.className = 'card-item' + cls;
 
     const iconMap = { done: '&#10003;', error: '&#10007;', progress: '&#9679;', queued: '&#9675;' };
-    const cardName = c.derived_name || c.name || c.card_id || '';
-    const encodedName = encodeURIComponent(cardName);
+    const cardId = c.name || c.card_id || '';
+    const displayName = c.derived_name || cardId;
     let checkbox = '';
     if ((c.icon === 'queued' || c.icon === 'done') && !isPolling) {
-      checkbox = '<input type="checkbox" class="extract-check" data-card="' + cardName.replace(/"/g, '&quot;') + '" onchange="updateExtractBtn()" style="margin-right:4px;">';
+      checkbox = '<input type="checkbox" class="extract-check" data-card="' + cardId.replace(/"/g, '&quot;') + '" onchange="updateExtractBtn()" style="margin-right:4px;">';
     }
     if (c.icon === 'done') {
       item.style.cursor = 'pointer';
-      item.onclick = function(e) { if (e.target.classList.contains('extract-check')) return; location.hash = 'review/' + encodedName; };
+      item.onclick = function(e) { if (e.target.classList.contains('extract-check')) return; location.hash = 'review/' + encodeURIComponent(cardId); };
     }
     item.innerHTML =
       checkbox +
       '<span class="icon ' + c.icon + '">' + (iconMap[c.icon] || '') + '</span>' +
-      '<span class="name">' + cardName + '</span>' +
+      '<span class="name">' + displayName + '</span>' +
       (c.icon !== 'queued' ? '<span class="status-text">' + (c.statusText || c.status || '') + '</span>' : '');
 
     list.appendChild(item);
@@ -551,8 +551,8 @@ async function initReview() {
   document.querySelector('.review-header').style.display = '';
   if (!reviewInitialized) {
     reviewInitialized = true;
-    await loadReviewCard(0);
   }
+  await loadReviewCard(reviewIndex);
 }
 
 function reviewJumpTo(cardId) {
