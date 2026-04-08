@@ -82,9 +82,9 @@
         <div class="section-title">Person</div>
         <div class="form-group"><label>First Name</label><input id="f-first_name" oninput="computeDerivedName()"></div>
         <div class="form-group"><label>Last Name</label><input id="f-last_name" oninput="computeDerivedName()"></div>
-        <div class="form-group"><label>Birth Date (YYYY-MM-DD)</label><input id="f-birth_date"></div>
+        <div class="form-group"><label>Birth Date</label><input id="f-birth_date" type="date"></div>
         <div class="form-group"><label>Birth Place</label><input id="f-birth_place" oninput="computeDerivedName()"></div>
-        <div class="form-group"><label>Death Date (YYYY-MM-DD)</label><input id="f-death_date" oninput="computeDerivedName()"></div>
+        <div class="form-group"><label>Death Date</label><input id="f-death_date" type="date" oninput="computeDerivedName()" onchange="computeDerivedName()"></div>
         <div class="form-group"><label>Death Place</label><input id="f-death_place"></div>
         <div class="form-group"><label>Age at Death</label><input id="f-age_at_death" type="number"></div>
         <div class="form-group"><label>Spouses</label><div id="spouses-list"></div><button type="button" class="add-spouse-btn" onclick="addSpouseInput('')">+ Add spouse</button></div>
