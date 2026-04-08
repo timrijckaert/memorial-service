@@ -88,7 +88,7 @@ ARCHAIC / REGIONAL DUTCH MONTH NAMES:
 Some memorial cards use old Dutch or regional month names. Treat these as their modern equivalents:
 - Louwmaand / Loumaand -> Januari (January)
 - Sprokkelmaand -> Februari (February)
-- Lentemaand -> Maart (March)
+- Lentemaand, Meert -> Maart (March)
 - Grasmaand -> April
 - Bloeimaand -> Mei (May)
 - Zomermaand / Weidemaand -> Juni (June)
@@ -98,6 +98,8 @@ Some memorial cards use old Dutch or regional month names. Treat these as their 
 - Wijnmaand -> Oktober (October)
 - Slachtmaand -> November
 - Wintermaand -> December
+- Op allerheiligen -> 1 November
+- Op allerzielen -> 2 November
 
 COMMON OCR MISSPELLINGS:
 Haeltert -> Haaltert,
