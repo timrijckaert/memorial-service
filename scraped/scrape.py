@@ -126,6 +126,7 @@ def parse_page(html: str, page_url: str) -> list[dict]:
             spouses = [eega] if eega and eega != "—" else []
 
             # Use image filename as slug (unique), fall back to name-based slug
+            broken_url = None
             if image_url and image_url.lower().endswith((".jpg", ".jpeg", ".png")):
                 image_filename = image_url.rsplit("/", 1)[-1]
                 slug = image_filename.rsplit(".", 1)[0].lower()
@@ -133,7 +134,9 @@ def parse_page(html: str, page_url: str) -> list[dict]:
             else:
                 slug = make_slug(last_name, first_name)
                 image_file = None
-                image_url = None  # not a real image URL
+                if image_url:
+                    broken_url = image_url
+                image_url = None
 
             person = {
                 "person": {
@@ -153,6 +156,7 @@ def parse_page(html: str, page_url: str) -> list[dict]:
                     "image_file": image_file,
                 },
                 "slug": slug,
+                "broken_url": broken_url,
             }
             persons.append(person)
 
@@ -168,8 +172,8 @@ def write_person_json(person: dict, json_dir: Path) -> bool:
     if out_file.exists():
         return False
 
-    # Strip internal slug field before writing
-    output = {k: v for k, v in person.items() if k != "slug"}
+    # Strip internal fields before writing
+    output = {k: v for k, v in person.items() if k not in ("slug", "broken_url")}
     out_file.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n")
     return True
 
@@ -265,6 +269,15 @@ async def run() -> None:
             persons = parse_page(html, page_url)
             all_persons.extend(persons)
         print(f"  Found {len(all_persons)} persons total")
+
+        # Log broken image URLs
+        for person in all_persons:
+            if person.get("broken_url"):
+                p = person["person"]
+                logger.error(
+                    f"Broken image link for '{p['last_name']} {p['first_name']}': "
+                    f"{person['broken_url']}"
+                )
 
         # Write JSON files (fall back to name-based slug on collision)
         new_count = 0
