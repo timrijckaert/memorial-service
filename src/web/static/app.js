@@ -598,15 +598,22 @@ async function loadReviewCard(index) {
   btn.classList.add('btn-primary');
 
   // Reset dirty tracking on all form fields
-  ['f-first_name', 'f-last_name', 'f-birth_date', 'f-birth_place',
-   'f-death_date', 'f-death_place', 'f-age_at_death'].forEach(function(id) {
+  ['f-first_name', 'f-last_name', 'f-birth_place', 'f-death_place'].forEach(function(id) {
     document.getElementById(id).oninput = function() {
       markFormDirty();
       computeDerivedName();
     };
   });
+  ['f-birth_date', 'f-death_date'].forEach(function(id) {
+    document.getElementById(id).oninput = function() {
+      computeAge();
+      computeDerivedName();
+    };
+  });
+  document.getElementById('f-age_at_death').oninput = markFormDirty;
 
   showSide('back');
+  computeAge();
 }
 
 function addSpouseInput(value) {
@@ -718,6 +725,27 @@ function markFormDirty() {
     btn.classList.remove('btn-success');
     btn.classList.add('btn-primary');
   }
+}
+
+function computeAge() {
+  var birthStr = document.getElementById('f-birth_date').value.trim();
+  var deathStr = document.getElementById('f-death_date').value.trim();
+  var ageField = document.getElementById('f-age_at_death');
+
+  if (birthStr && deathStr && birthStr.match(/^\d{4}-\d{2}-\d{2}$/) && deathStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    var birth = new Date(birthStr);
+    var death = new Date(deathStr);
+    var age = death.getFullYear() - birth.getFullYear();
+    var monthDiff = death.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && death.getDate() < birth.getDate())) {
+      age--;
+    }
+    ageField.value = age;
+    ageField.readOnly = true;
+  } else {
+    ageField.readOnly = false;
+  }
+  markFormDirty();
 }
 
 /* ---- Export ---- */

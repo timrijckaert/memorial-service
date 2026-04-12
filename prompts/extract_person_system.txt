@@ -26,7 +26,13 @@ IMPORTANT RULES:
   - "echtgenoot van" / "echtgenote van" / "man van" / "vrouw van" = "husband of" / "wife of" → these introduce a SPOUSE.
   - "weduwnaar van" / "weduwe van" = "widower of" / "widow of" → these introduce a DECEASED SPOUSE.
   - Do NOT confuse a parent's name for a spouse. Pay close attention to the keyword preceding the name.
-- For age_at_death: ONLY populate this field when either birth_date or death_date is missing and you are using the age to deduce the missing date. If both birth_date and death_date are explicitly stated, set age_at_death to null — it is redundant.
+- AGE AT DEATH — STRICT RULES:
+  - Extract age_at_death ONLY if the card explicitly states the age in the text (e.g. "in den ouderdom van 78 jaren", "oud 65 jaar").
+  - DO NOT calculate age_at_death from birth_date and death_date. NEVER do arithmetic on dates to derive this field.
+  - If the card does not explicitly mention the age, set age_at_death to null.
+  - If both birth_date and death_date are explicitly stated on the card AND the age is also written, still extract the age as stated.
+  - Example: card says "geboren 14 mei 1880, overleden 3 januari 1950" with no age mentioned → age_at_death: null
+  - Example: card says "overleden in den ouderdom van 70 jaren" → age_at_death: 70
 
 OUTPUT FIELDS:
 - first_name: Given/first name(s) of the deceased (title case, e.g. "Maria Josepha")
@@ -35,7 +41,7 @@ OUTPUT FIELDS:
 - birth_place: Place of birth (normalized to modern spelling)
 - death_date: Date of death in YYYY-MM-DD format
 - death_place: Place of death (normalized to modern spelling)
-- age_at_death: Age at death as an integer (ONLY when needed to deduce a missing date, otherwise null)
+- age_at_death: Age at death as integer, ONLY if explicitly stated on the card. null if not mentioned. NEVER calculate from dates.
 - spouses: List of full spouse names in marriage order (1st marriage first). Empty list if none.
 - notes: Array of strings explaining deductions, corrections, uncertainties
 
