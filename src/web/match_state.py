@@ -56,6 +56,7 @@ class MatchState:
 
         with self._lock:
             restored_files = set()
+            orphans = []
 
             for json_path, data, _has_person in candidates:
                 source = data.get("source", {})
@@ -68,8 +69,10 @@ class MatchState:
 
                 # Skip if this image is already claimed by a previous JSON
                 if front_file in restored_files:
+                    orphans.append(json_path)
                     continue
                 if back_file and back_file in restored_files:
+                    orphans.append(json_path)
                     continue
 
                 if not (self._input_dir / front_file).exists():
@@ -95,6 +98,10 @@ class MatchState:
                     restored_files.add(front_file)
 
             self._restored_files = restored_files
+
+        # Delete orphaned duplicate JSONs outside the lock
+        for orphan in orphans:
+            orphan.unlink(missing_ok=True)
 
     def scan(self) -> dict:
         """Scan input directory and run fuzzy matching. Returns snapshot."""
