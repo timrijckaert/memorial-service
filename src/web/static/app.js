@@ -597,6 +597,15 @@ async function loadReviewCard(index) {
   btn.classList.remove('btn-success');
   btn.classList.add('btn-primary');
 
+  // Reset dirty tracking on all form fields
+  ['f-first_name', 'f-last_name', 'f-birth_date', 'f-birth_place',
+   'f-death_date', 'f-death_place', 'f-age_at_death'].forEach(function(id) {
+    document.getElementById(id).oninput = function() {
+      markFormDirty();
+      computeDerivedName();
+    };
+  });
+
   showSide('back');
 }
 
@@ -606,6 +615,7 @@ function addSpouseInput(value) {
   div.className = 'spouse-entry';
   const input = document.createElement('input');
   input.value = value;
+  input.oninput = markFormDirty;
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.textContent = '\u00d7';
@@ -699,6 +709,15 @@ function computeDerivedName() {
   }
 
   document.getElementById('review-derived-name').textContent = parts.join(' ');
+}
+
+function markFormDirty() {
+  const btn = document.getElementById('approve-btn');
+  if (btn.textContent === 'Saved!') {
+    btn.textContent = 'Approve';
+    btn.classList.remove('btn-success');
+    btn.classList.add('btn-primary');
+  }
 }
 
 /* ---- Export ---- */
