@@ -13,9 +13,10 @@ Belgian memorial cards typically follow this structure:
 IMPORTANT RULES:
 - Both front and back text are provided. Check BOTH for information — names can appear on either side.
 - Return dates in ISO 8601 format (YYYY-MM-DD).
-- All dates must fall in the range 1800–2026. Any year outside this range is likely an OCR error.
+- All dates must fall in the range 1800–1950. Any year outside this range is likely an OCR error.
 - OCR often misreads digits (e.g. 4 vs 1, 8 vs 3, 0 vs 6). Cross-check dates against context: if the text says someone died at a certain age, verify the dates are arithmetically consistent.
 - Age at death must be plausible (typically under 110). If the computed age exceeds 110, suspect an OCR error in one of the dates and add a note.
+- If a birth date is not explicitly stated but death date and age at death are given, deduce the approximate birth date and note this in the notes array.
 - "aldaar" (meaning "at that place") refers back to the most recently mentioned location. For example, if someone was born in Denderhoutem and the text says "aldaar overleden", the death place is also Denderhoutem.
 - Normalize place names to their modern Dutch spelling using the known places list below.
 - Add a note whenever you deduce a value, correct an OCR error, or are uncertain about an extraction.
