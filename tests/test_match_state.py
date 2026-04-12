@@ -310,3 +310,127 @@ def test_confirm_auto_confirmed_keeps_existing_uuid(tmp_path):
     # Only one skeleton file should exist for this card
     skeleton_path = json_dir / f"{original_card_id}.json"
     assert skeleton_path.exists()
+
+
+def test_restore_rebuilds_pairs_from_json(tmp_path):
+    """restore() reconstructs confirmed pairs from existing skeleton JSONs."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    json_dir = output_dir / "json"
+    json_dir.mkdir()
+
+    _make_image(input_dir / "front.jpeg")
+    _make_image(input_dir / "back.jpeg")
+
+    card_id = str(uuid.uuid4())
+    skeleton = {
+        "source": {
+            "front_image_file": "front.jpeg",
+            "back_image_file": "back.jpeg",
+        }
+    }
+    (json_dir / f"{card_id}.json").write_text(json.dumps(skeleton))
+
+    state = MatchState(input_dir, output_dir, json_dir)
+    state.restore()
+
+    snapshot = state.get_snapshot()
+    assert len(snapshot["pairs"]) == 1
+    pair = snapshot["pairs"][0]
+    assert pair["card_id"] == card_id
+    assert pair["status"] == "auto_confirmed"
+    assert pair["image_a"]["filename"] == "front.jpeg"
+    assert pair["image_b"]["filename"] == "back.jpeg"
+
+
+def test_restore_rebuilds_singles_from_json(tmp_path):
+    """restore() reconstructs singles (back_image_file is null)."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    json_dir = output_dir / "json"
+    json_dir.mkdir()
+
+    _make_image(input_dir / "single.jpeg")
+
+    card_id = str(uuid.uuid4())
+    skeleton = {
+        "source": {
+            "front_image_file": "single.jpeg",
+            "back_image_file": None,
+        }
+    }
+    (json_dir / f"{card_id}.json").write_text(json.dumps(skeleton))
+
+    state = MatchState(input_dir, output_dir, json_dir)
+    state.restore()
+
+    snapshot = state.get_snapshot()
+    assert len(snapshot["singles"]) == 1
+    assert snapshot["singles"][0]["filename"] == "single.jpeg"
+    assert snapshot["singles"][0]["card_id"] == card_id
+
+
+def test_restore_skips_json_with_missing_source_images(tmp_path):
+    """restore() ignores JSONs whose source images no longer exist in input/."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    json_dir = output_dir / "json"
+    json_dir.mkdir()
+
+    card_id = str(uuid.uuid4())
+    skeleton = {
+        "source": {
+            "front_image_file": "gone.jpeg",
+            "back_image_file": "also_gone.jpeg",
+        }
+    }
+    (json_dir / f"{card_id}.json").write_text(json.dumps(skeleton))
+
+    state = MatchState(input_dir, output_dir, json_dir)
+    state.restore()
+
+    snapshot = state.get_snapshot()
+    assert len(snapshot["pairs"]) == 0
+    assert len(snapshot["singles"]) == 0
+
+
+def test_scan_skips_already_restored_images(tmp_path):
+    """scan() does not re-pair images that are already part of restored pairs."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    json_dir = output_dir / "json"
+    json_dir.mkdir()
+
+    _make_image(input_dir / "Person A 1920.jpeg")
+    _make_image(input_dir / "Person A 1920 1.jpeg")
+    _make_image(input_dir / "new_image.jpeg")
+
+    card_id = str(uuid.uuid4())
+    skeleton = {
+        "source": {
+            "front_image_file": "Person A 1920.jpeg",
+            "back_image_file": "Person A 1920 1.jpeg",
+        }
+    }
+    (json_dir / f"{card_id}.json").write_text(json.dumps(skeleton))
+
+    state = MatchState(input_dir, output_dir, json_dir)
+    state.restore()
+
+    result = state.scan()
+
+    restored_ids = [p["card_id"] for p in result["pairs"] if p["card_id"] == card_id]
+    assert len(restored_ids) == 1
+
+    unmatched_names = {u["filename"] for u in result["unmatched"]}
+    assert "new_image.jpeg" in unmatched_names
+    assert "Person A 1920.jpeg" not in unmatched_names
+    assert "Person A 1920 1.jpeg" not in unmatched_names

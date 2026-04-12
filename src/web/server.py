@@ -249,6 +249,7 @@ def make_server(
     server.output_dir = output_dir
     server.worker = ExtractionWorker()
     server.match_state = MatchState(input_dir, output_dir, json_dir)
+    server.match_state.restore()
     config_path = input_dir.parent / "config.json"
     server.backend = make_backend(config_path)
     return server

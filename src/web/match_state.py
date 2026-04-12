@@ -22,6 +22,7 @@ class MatchState:
         self._unmatched: list[dict] = []
         self._singles: list[dict] = []
         self._metadata: dict[str, dict] = {}
+        self._restored_files: set[str] = set()
 
     def _assign_card_id(self, front_file: str, back_file: str | None) -> str:
         """Generate a UUID4, write skeleton JSON to json_dir, return UUID string."""
@@ -37,14 +38,74 @@ class MatchState:
         skeleton_path.write_text(json.dumps(skeleton, indent=2))
         return card_id
 
+    def restore(self) -> None:
+        """Reconstruct match state from existing JSON files on disk."""
+        if not self._json_dir.exists():
+            return
+
+        with self._lock:
+            restored_files = set()
+
+            for json_path in sorted(self._json_dir.glob("*.json")):
+                try:
+                    data = json.loads(json_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+                source = data.get("source", {})
+                front_file = source.get("front_image_file")
+                back_file = source.get("back_image_file")
+                card_id = json_path.stem
+
+                if not front_file:
+                    continue
+
+                if not (self._input_dir / front_file).exists():
+                    continue
+                if back_file and not (self._input_dir / back_file).exists():
+                    continue
+
+                if back_file:
+                    self._pairs.append({
+                        "image_a": {"filename": front_file},
+                        "image_b": {"filename": back_file},
+                        "score": 1.0,
+                        "status": "auto_confirmed",
+                        "card_id": card_id,
+                    })
+                    restored_files.add(front_file)
+                    restored_files.add(back_file)
+                else:
+                    self._singles.append({
+                        "filename": front_file,
+                        "card_id": card_id,
+                    })
+                    restored_files.add(front_file)
+
+            self._restored_files = restored_files
+
     def scan(self) -> dict:
         """Scan input directory and run fuzzy matching. Returns snapshot."""
         result = scan_and_match(self._input_dir)
 
+        if self._restored_files:
+            result["pairs"] = [
+                p for p in result["pairs"]
+                if p["image_a"]["filename"] not in self._restored_files
+                and p["image_b"]["filename"] not in self._restored_files
+            ]
+            result["unmatched"] = [
+                u for u in result["unmatched"]
+                if u["filename"] not in self._restored_files
+            ]
+
         with self._lock:
-            self._pairs = result["pairs"]
-            self._unmatched = result["unmatched"]
-            self._singles = []
+            new_pairs = result["pairs"]
+            new_unmatched = result["unmatched"]
+            # Keep restored pairs/singles, add newly scanned ones
+            self._pairs = [p for p in self._pairs if p.get("card_id")] + new_pairs
+            self._unmatched = new_unmatched
+            # Don't clear singles — restored singles should persist
             self._metadata = {}
             for pair in self._pairs:
                 self._metadata[pair["image_a"]["filename"]] = pair["image_a"]
