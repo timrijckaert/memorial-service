@@ -7,3 +7,6 @@ __pycache__/
 .DS_Store
 .superpowers/
 config.json
+scraped/.venv/
+scraped/json/
+scraped/images/
