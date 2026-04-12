@@ -86,55 +86,60 @@ LETTER_PAGES = {
 def parse_page(html: str, page_url: str) -> list[dict]:
     """Parse a letter page's HTML table into a list of person dicts."""
     soup = BeautifulSoup(html, "lxml")
-    table = soup.find("table")
-    if not table:
+    tables = soup.find_all("table")
+    if not tables:
         return []
 
     persons = []
-    for row in table.find_all("tr"):
-        cells = row.find_all("td")
-        if len(cells) < 6:
-            continue
+    for table in tables:
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 6:
+                continue
 
-        # Extract name and image link
-        name_cell = cells[0]
-        link = name_cell.find("a")
-        full_name = name_cell.get_text(strip=True)
-        image_url = link["href"] if link and link.has_attr("href") else None
+            # Skip header rows (they use <strong> inside <td>)
+            if cells[0].find("strong"):
+                continue
 
-        # Extract other fields
-        eega = cells[1].get_text(strip=True)
-        birth_place = cells[2].get_text(strip=True)
-        birth_date_raw = cells[3].get_text(strip=True)
-        death_place = cells[4].get_text(strip=True)
-        death_date_raw = cells[5].get_text(strip=True)
+            # Extract name and image link
+            name_cell = cells[0]
+            link = name_cell.find("a")
+            full_name = name_cell.get_text(strip=True)
+            image_url = link["href"] if link and link.has_attr("href") else None
 
-        # Transform
-        last_name, first_name = split_name(full_name)
-        spouses = [eega] if eega and eega != "—" else []
+            # Extract other fields
+            eega = cells[1].get_text(strip=True)
+            birth_place = cells[2].get_text(strip=True)
+            birth_date_raw = cells[3].get_text(strip=True)
+            death_place = cells[4].get_text(strip=True)
+            death_date_raw = cells[5].get_text(strip=True)
 
-        slug = make_slug(last_name, first_name)
+            # Transform
+            last_name, first_name = split_name(full_name)
+            spouses = [eega] if eega and eega != "—" else []
 
-        person = {
-            "person": {
-                "first_name": first_name,
-                "last_name": last_name,
-                "birth_date": convert_date(birth_date_raw),
-                "birth_place": birth_place or None,
-                "death_date": convert_date(death_date_raw),
-                "death_place": death_place or None,
-                "age_at_death": None,
-                "spouses": spouses,
-            },
-            "notes": [],
-            "source": {
-                "url": page_url,
-                "image_url": image_url,
-                "image_file": f"{slug}.jpg" if image_url else None,
-            },
-            "slug": slug,
-        }
-        persons.append(person)
+            slug = make_slug(last_name, first_name)
+
+            person = {
+                "person": {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "birth_date": convert_date(birth_date_raw),
+                    "birth_place": birth_place or None,
+                    "death_date": convert_date(death_date_raw),
+                    "death_place": death_place or None,
+                    "age_at_death": None,
+                    "spouses": spouses,
+                },
+                "notes": [],
+                "source": {
+                    "url": page_url,
+                    "image_url": image_url,
+                    "image_file": f"{slug}.jpg" if image_url else None,
+                },
+                "slug": slug,
+            }
+            persons.append(person)
 
     return persons
 
@@ -225,7 +230,8 @@ async def run() -> None:
     images_dir.mkdir(exist_ok=True)
 
     print("Fetching letter pages...")
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    limits = httpx.Limits(max_connections=5, max_keepalive_connections=5)
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True, limits=limits) as client:
         pages = await fetch_pages(client)
         print(f"  Fetched {len(pages)} pages")
 
