@@ -245,3 +245,72 @@ def generate_architecture(src_dir: Path) -> str:
                 lines.append(f"| {method} | `{path}` |")
 
     return "\n".join(lines) + "\n"
+
+
+def _get_module_functions(py_path: Path) -> list[dict]:
+    """Extract all top-level function signatures from a module."""
+    try:
+        tree = ast.parse(py_path.read_text())
+    except SyntaxError:
+        return []
+    funcs = []
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name.startswith("_"):
+                continue
+            sig = _format_signature(node)
+            doc = ast.get_docstring(node) or ""
+            funcs.append({
+                "name": node.name,
+                "signature": sig,
+                "docstring": doc.strip().split("\n")[0] if doc else "",
+            })
+    return funcs
+
+
+def generate_api_surface(src_dir: Path) -> str:
+    """Generate the api-surface.md content."""
+    lines = ["# API Surface\n"]
+
+    # Package exports with full signatures
+    for pkg_dir in sorted(src_dir.iterdir()):
+        if not pkg_dir.is_dir() or pkg_dir.name.startswith("_"):
+            continue
+        init = pkg_dir / "__init__.py"
+        if not init.exists():
+            continue
+        exports = get_package_exports(pkg_dir)
+        if not exports:
+            continue
+        doc = _get_module_docstring(init)
+        lines.append(f"## {pkg_dir.name}\n")
+        if doc:
+            lines.append(f"{doc}\n")
+        for exp in exports:
+            lines.append(f"### `{exp['signature']}`\n")
+            if exp["docstring"]:
+                lines.append(f"{exp['docstring']}\n")
+            lines.append(f"*Defined in `{exp['source_file']}`*\n")
+
+    # Standalone modules
+    standalone = []
+    for py_file in sorted(src_dir.glob("*.py")):
+        if py_file.name == "__init__.py":
+            continue
+        funcs = _get_module_functions(py_file)
+        if funcs:
+            standalone.append((py_file, funcs))
+
+    if standalone:
+        lines.append("## Standalone Modules\n")
+        for py_file, funcs in standalone:
+            doc = _get_module_docstring(py_file)
+            lines.append(f"### `src/{py_file.name}`\n")
+            if doc:
+                lines.append(f"{doc}\n")
+            for f in funcs:
+                lines.append(f"#### `{f['signature']}`\n")
+                if f["docstring"]:
+                    lines.append(f"{f['docstring']}\n")
+
+    return "\n".join(lines) + "\n"

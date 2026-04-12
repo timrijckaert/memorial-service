@@ -105,3 +105,38 @@ def test_generate_architecture(rebuild, tmp_path):
     assert "## HTTP API Endpoints" in md
     assert "GET" in md
     assert "/api/cards" in md
+
+
+def test_generate_api_surface(rebuild, tmp_path):
+    """generate_api_surface produces markdown with function signatures per package."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "__init__.py").write_text("")
+    pkg = src / "tools"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text(textwrap.dedent('''\
+        """Tool utilities."""
+        from tools.hammer import hit
+        __all__ = ["hit"]
+    '''))
+    (pkg / "hammer.py").write_text(textwrap.dedent('''\
+        def hit(nail: str, force: int = 10) -> bool:
+            """Drive a nail with given force."""
+            return True
+    '''))
+
+    # Also test standalone modules
+    (src / "helper.py").write_text(textwrap.dedent('''\
+        """Helper functions."""
+
+        def greet(name: str) -> str:
+            """Say hello."""
+            return f"Hello {name}"
+    '''))
+
+    md = rebuild.generate_api_surface(src)
+    assert "## tools" in md
+    assert "hit(nail: str, force: int = 10) -> bool" in md
+    assert "Drive a nail with given force." in md
+    assert "## Standalone Modules" in md
+    assert "greet(name: str) -> str" in md
