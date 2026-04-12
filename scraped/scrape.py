@@ -2,6 +2,40 @@
 
 BASE_URL = "https://heemkringhaaltert.be/"
 
+# Two-word particles must be checked before single-word ones
+_PARTICLES_MULTI = {"van de", "van den", "van der"}
+_PARTICLES_SINGLE = {"van", "de", "den", "der", "te", "ten", "ter", "'t"}
+
+
+def split_name(full_name: str) -> tuple[str, str]:
+    """Split 'LastName FirstName' using tussenvoegsel-aware logic.
+
+    Returns (last_name, first_name).
+    """
+    words = full_name.split()
+    i = 0
+
+    while i < len(words) - 1:  # Must leave at least 1 word for surname core
+        # Try two-word particle first
+        if i + 1 < len(words) - 1:
+            pair = f"{words[i]} {words[i+1]}".lower()
+            if pair in _PARTICLES_MULTI:
+                i += 2
+                continue
+
+        # Try single-word particle
+        if words[i].lower() in _PARTICLES_SINGLE:
+            i += 1
+            continue
+
+        break
+
+    # Next word after particles is the surname core
+    surname_end = i + 1
+    last_name = " ".join(words[:surname_end])
+    first_name = " ".join(words[surname_end:])
+    return last_name, first_name
+
 LETTER_PAGES = {
     "A": 9498, "B": 9516, "C": 9560, "D": 9580, "D'h": 9706,
     "E": 9715, "F": 9726, "G": 9741, "H": 9758, "I": 9784,
