@@ -140,3 +140,39 @@ def test_generate_api_surface(rebuild, tmp_path):
     assert "Drive a nail with given force." in md
     assert "## Standalone Modules" in md
     assert "greet(name: str) -> str" in md
+
+
+def test_generate_data_model(rebuild, tmp_path):
+    """generate_data_model extracts PERSON_SCHEMA and documents directory layout."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "__init__.py").write_text("")
+    extraction = src / "extraction"
+    extraction.mkdir()
+    (extraction / "__init__.py").write_text("")
+    (extraction / "schema.py").write_text(textwrap.dedent('''\
+        PERSON_SCHEMA = {
+            "type": "object",
+            "properties": {
+                "person": {
+                    "type": "object",
+                    "properties": {
+                        "first_name": {"type": "string"},
+                    },
+                },
+            },
+        }
+    '''))
+
+    # Create directory structure
+    (tmp_path / "input").mkdir()
+    (tmp_path / "output" / "json").mkdir(parents=True)
+    (tmp_path / "output" / "text").mkdir()
+    (tmp_path / "output" / "export").mkdir()
+
+    md = rebuild.generate_data_model(src, tmp_path)
+    assert "## PERSON_SCHEMA" in md
+    assert "first_name" in md
+    assert "## Directory Layout" in md
+    assert "input/" in md
+    assert "output/json/" in md

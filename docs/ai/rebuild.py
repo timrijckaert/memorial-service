@@ -314,3 +314,65 @@ def generate_api_surface(src_dir: Path) -> str:
                     lines.append(f"{f['docstring']}\n")
 
     return "\n".join(lines) + "\n"
+
+
+def _extract_schema(schema_path: Path) -> str | None:
+    """Extract PERSON_SCHEMA as formatted JSON from schema.py."""
+    if not schema_path.exists():
+        return None
+    try:
+        tree = ast.parse(schema_path.read_text())
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "PERSON_SCHEMA":
+                    # Evaluate the literal safely
+                    try:
+                        value = ast.literal_eval(node.value)
+                        return json.dumps(value, indent=2)
+                    except (ValueError, TypeError):
+                        return None
+    return None
+
+
+def generate_data_model(src_dir: Path, project_root: Path) -> str:
+    """Generate the data-model.md content."""
+    lines = ["# Data Model\n"]
+
+    # PERSON_SCHEMA
+    schema_path = src_dir / "extraction" / "schema.py"
+    schema_json = _extract_schema(schema_path)
+    if schema_json:
+        lines.append("## PERSON_SCHEMA\n")
+        lines.append("The canonical structure for extracted memorial card data:\n")
+        lines.append("```json")
+        lines.append(schema_json)
+        lines.append("```\n")
+
+    # Directory layout
+    lines.append("## Directory Layout\n")
+    dirs = [
+        ("input/", "Scanned memorial card images (front + back pairs)"),
+        ("output/json/", "Per-card JSON files (UUID-keyed, one per confirmed pair)"),
+        ("output/text/", "Raw OCR text output (before LLM interpretation)"),
+        ("output/export/", "Final stitched images + consolidated memorial_cards.json"),
+        ("prompts/", "LLM system/user prompt templates (user-editable)"),
+    ]
+    lines.append("| Directory | Purpose |")
+    lines.append("|-----------|---------|")
+    for d, purpose in dirs:
+        lines.append(f"| `{d}` | {purpose} |")
+
+    # JSON lifecycle
+    lines.append("\n## JSON File Lifecycle\n")
+    lines.append(
+        "1. **Skeleton** — created at match confirm, contains only "
+        "`source.front_image_file` and `source.back_image_file`\n"
+        "2. **Enriched** — after LLM extraction, `person` and `notes` fields are added\n"
+        "3. **Reviewed** — after human correction in the review UI, fields may be updated\n"
+        "4. **Exported** — consolidated into `output/export/memorial_cards.json` with derived filenames\n"
+    )
+
+    return "\n".join(lines) + "\n"
