@@ -12,9 +12,6 @@ Generates:
 import ast
 import argparse
 import json
-import re
-import sys
-import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -337,7 +334,7 @@ def _extract_schema(schema_path: Path) -> str | None:
     return None
 
 
-def generate_data_model(src_dir: Path, project_root: Path) -> str:
+def generate_data_model(src_dir: Path) -> str:
     """Generate the data-model.md content."""
     lines = ["# Data Model\n"]
 
@@ -403,7 +400,6 @@ def _write_if_changed(path: Path, content: str, quiet: bool) -> bool:
 def rebuild_all(
     src_dir: Path,
     ai_dir: Path,
-    project_root: Path,
     quiet: bool = False,
 ) -> int:
     """Regenerate all auto-generated knowledge base files.
@@ -421,7 +417,7 @@ def rebuild_all(
     if _write_if_changed(ai_dir / "api-surface.md", api, quiet):
         updated += 1
 
-    data = generate_data_model(src_dir, project_root)
+    data = generate_data_model(src_dir)
     if _write_if_changed(ai_dir / "data-model.md", data, quiet):
         updated += 1
 
@@ -437,7 +433,7 @@ def main():
                         help="Suppress output unless files changed")
     args = parser.parse_args()
 
-    rebuild_all(_SRC_DIR, _AI_DIR, _PROJECT_ROOT, quiet=args.quiet)
+    rebuild_all(_SRC_DIR, _AI_DIR, quiet=args.quiet)
 
 
 if __name__ == "__main__":

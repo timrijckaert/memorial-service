@@ -170,7 +170,7 @@ def test_generate_data_model(rebuild, tmp_path):
     (tmp_path / "output" / "text").mkdir()
     (tmp_path / "output" / "export").mkdir()
 
-    md = rebuild.generate_data_model(src, tmp_path)
+    md = rebuild.generate_data_model(src)
     assert "## PERSON_SCHEMA" in md
     assert "first_name" in md
     assert "## Directory Layout" in md
@@ -193,7 +193,7 @@ def test_rebuild_creates_three_files(rebuild, tmp_path):
     ai_dir = tmp_path / "docs" / "ai"
     ai_dir.mkdir(parents=True)
 
-    rebuild.rebuild_all(src, ai_dir, tmp_path)
+    rebuild.rebuild_all(src, ai_dir)
 
     assert (ai_dir / "architecture.md").exists()
     assert (ai_dir / "api-surface.md").exists()
@@ -218,10 +218,10 @@ def test_rebuild_quiet_no_output_when_unchanged(rebuild, tmp_path, capsys):
     ai_dir.mkdir(parents=True)
 
     # First run writes files
-    rebuild.rebuild_all(src, ai_dir, tmp_path, quiet=True)
+    rebuild.rebuild_all(src, ai_dir, quiet=True)
     capsys.readouterr()  # clear
 
     # Second run: nothing changed
-    rebuild.rebuild_all(src, ai_dir, tmp_path, quiet=True)
+    rebuild.rebuild_all(src, ai_dir, quiet=True)
     captured = capsys.readouterr()
     assert captured.out == ""
