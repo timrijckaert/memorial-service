@@ -1,0 +1,6 @@
+.venv/
+json/
+images/
+scrape.log
+__pycache__/
+.pytest_cache/
