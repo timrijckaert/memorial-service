@@ -68,7 +68,7 @@ class MatchState:
                     self._pairs.append({
                         "image_a": {"filename": front_file},
                         "image_b": {"filename": back_file},
-                        "score": 1.0,
+                        "score": 100,
                         "status": "auto_confirmed",
                         "card_id": card_id,
                     })
