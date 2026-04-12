@@ -176,3 +176,52 @@ def test_generate_data_model(rebuild, tmp_path):
     assert "## Directory Layout" in md
     assert "input/" in md
     assert "output/json/" in md
+
+
+def test_rebuild_creates_three_files(rebuild, tmp_path):
+    """rebuild_all creates architecture.md, api-surface.md, data-model.md."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "__init__.py").write_text("")
+    pkg = src / "extraction"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text('"""Extraction pipeline."""\n__all__ = []\n')
+    (pkg / "schema.py").write_text('PERSON_SCHEMA = {"type": "object", "properties": {}}\n')
+    (tmp_path / "input").mkdir()
+    (tmp_path / "output" / "json").mkdir(parents=True)
+
+    ai_dir = tmp_path / "docs" / "ai"
+    ai_dir.mkdir(parents=True)
+
+    rebuild.rebuild_all(src, ai_dir, tmp_path)
+
+    assert (ai_dir / "architecture.md").exists()
+    assert (ai_dir / "api-surface.md").exists()
+    assert (ai_dir / "data-model.md").exists()
+
+    content = (ai_dir / "architecture.md").read_text()
+    assert "AUTO-GENERATED" in content
+
+
+def test_rebuild_quiet_no_output_when_unchanged(rebuild, tmp_path, capsys):
+    """In quiet mode, rebuild produces no output when files haven't changed."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "__init__.py").write_text("")
+    pkg = src / "extraction"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text('"""Extraction."""\n__all__ = []\n')
+    (pkg / "schema.py").write_text('PERSON_SCHEMA = {"type": "object", "properties": {}}\n')
+    (tmp_path / "input").mkdir()
+
+    ai_dir = tmp_path / "docs" / "ai"
+    ai_dir.mkdir(parents=True)
+
+    # First run writes files
+    rebuild.rebuild_all(src, ai_dir, tmp_path, quiet=True)
+    capsys.readouterr()  # clear
+
+    # Second run: nothing changed
+    rebuild.rebuild_all(src, ai_dir, tmp_path, quiet=True)
+    captured = capsys.readouterr()
+    assert captured.out == ""

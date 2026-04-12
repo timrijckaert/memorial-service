@@ -376,3 +376,69 @@ def generate_data_model(src_dir: Path, project_root: Path) -> str:
     )
 
     return "\n".join(lines) + "\n"
+
+
+def _write_if_changed(path: Path, content: str, quiet: bool) -> bool:
+    """Write content to path only if it differs. Returns True if written."""
+    timestamped = _HEADER.format(
+        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ) + content
+
+    # For comparison, strip the timestamp line (it changes every run)
+    def _strip_timestamp(text: str) -> str:
+        lines = text.split("\n")
+        return "\n".join(l for l in lines if not l.startswith("<!-- Last rebuilt:"))
+
+    if path.exists():
+        existing = path.read_text()
+        if _strip_timestamp(existing) == _strip_timestamp(timestamped):
+            return False
+
+    path.write_text(timestamped)
+    if not quiet:
+        print(f"Updated {path}")
+    return True
+
+
+def rebuild_all(
+    src_dir: Path,
+    ai_dir: Path,
+    project_root: Path,
+    quiet: bool = False,
+) -> int:
+    """Regenerate all auto-generated knowledge base files.
+
+    Returns the number of files that were updated.
+    """
+    ai_dir.mkdir(parents=True, exist_ok=True)
+    updated = 0
+
+    arch = generate_architecture(src_dir)
+    if _write_if_changed(ai_dir / "architecture.md", arch, quiet):
+        updated += 1
+
+    api = generate_api_surface(src_dir)
+    if _write_if_changed(ai_dir / "api-surface.md", api, quiet):
+        updated += 1
+
+    data = generate_data_model(src_dir, project_root)
+    if _write_if_changed(ai_dir / "data-model.md", data, quiet):
+        updated += 1
+
+    if not quiet and updated == 0:
+        print("Knowledge base is up to date.")
+
+    return updated
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Rebuild AI knowledge base")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Suppress output unless files changed")
+    args = parser.parse_args()
+
+    rebuild_all(_SRC_DIR, _AI_DIR, _PROJECT_ROOT, quiet=args.quiet)
+
+
+if __name__ == "__main__":
+    main()
