@@ -42,21 +42,34 @@ class MatchState:
         if not self._json_dir.exists():
             return
 
+        # Read all JSONs, preferring those with person data over skeletons
+        candidates = []
+        for json_path in self._json_dir.glob("*.json"):
+            try:
+                data = json.loads(json_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            has_person = "person" in data
+            candidates.append((json_path, data, has_person))
+        # Sort: extracted cards first, then by path for determinism
+        candidates.sort(key=lambda c: (not c[2], c[0]))
+
         with self._lock:
             restored_files = set()
 
-            for json_path in sorted(self._json_dir.glob("*.json")):
-                try:
-                    data = json.loads(json_path.read_text())
-                except (json.JSONDecodeError, OSError):
-                    continue
-
+            for json_path, data, _has_person in candidates:
                 source = data.get("source", {})
                 front_file = source.get("front_image_file")
                 back_file = source.get("back_image_file")
                 card_id = json_path.stem
 
                 if not front_file:
+                    continue
+
+                # Skip if this image is already claimed by a previous JSON
+                if front_file in restored_files:
+                    continue
+                if back_file and back_file in restored_files:
                     continue
 
                 if not (self._input_dir / front_file).exists():
