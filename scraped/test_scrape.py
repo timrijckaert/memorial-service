@@ -44,3 +44,72 @@ def test_convert_date(input_date, expected):
 ])
 def test_make_slug(last, first, expected):
     assert make_slug(last, first) == expected
+
+
+from scrape import parse_page
+
+FIXTURE_HTML = """
+<table>
+<thead>
+<tr><th>Naam</th><th>Eega</th><th>Geboren te</th><th>Geboren op</th><th>Overleden te</th><th>Overleden op</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><a href="https://heemkringhaaltert.be/wp-content/uploads/2025/12/Ackerman-Alina.jpg">Ackerman Alina</a></td>
+  <td>Boone Pierre</td>
+  <td>Everberg</td>
+  <td>15/11/1902</td>
+  <td>Haaltert</td>
+  <td>16/12/1966</td>
+</tr>
+<tr>
+  <td><a href="https://heemkringhaaltert.be/wp-content/uploads/2025/11/Allaer-Alois.jpg">Allaer Aloïs</a></td>
+  <td>—</td>
+  <td>Denderhoutem</td>
+  <td>25/09/1866</td>
+  <td>Denderhoutem</td>
+  <td>08/02/1925</td>
+</tr>
+<tr>
+  <td><a href="https://heemkringhaaltert.be/wp-content/uploads/2026/02/Van-De-Smet-Maria.jpg">Van De Smet Maria</a></td>
+  <td>Janssens Karel</td>
+  <td>Haaltert</td>
+  <td>01/03/1910</td>
+  <td>Aalst</td>
+  <td>22/07/1985</td>
+</tr>
+</tbody>
+</table>
+"""
+
+
+def test_parse_page_extracts_persons():
+    persons = parse_page(FIXTURE_HTML, "https://heemkringhaaltert.be/?page_id=9498")
+    assert len(persons) == 3
+
+    p1 = persons[0]
+    assert p1["person"]["last_name"] == "Ackerman"
+    assert p1["person"]["first_name"] == "Alina"
+    assert p1["person"]["birth_date"] == "1902-11-15"
+    assert p1["person"]["birth_place"] == "Everberg"
+    assert p1["person"]["death_date"] == "1966-12-16"
+    assert p1["person"]["death_place"] == "Haaltert"
+    assert p1["person"]["age_at_death"] is None
+    assert p1["person"]["spouses"] == ["Boone Pierre"]
+    assert p1["source"]["image_url"] == "https://heemkringhaaltert.be/wp-content/uploads/2025/12/Ackerman-Alina.jpg"
+    assert p1["slug"] == "ackerman-alina"
+
+
+def test_parse_page_empty_spouse():
+    persons = parse_page(FIXTURE_HTML, "https://heemkringhaaltert.be/?page_id=9498")
+    p2 = persons[1]
+    assert p2["person"]["spouses"] == []
+    assert p2["person"]["first_name"] == "Aloïs"
+
+
+def test_parse_page_tussenvoegsel_name():
+    persons = parse_page(FIXTURE_HTML, "https://heemkringhaaltert.be/?page_id=9498")
+    p3 = persons[2]
+    assert p3["person"]["last_name"] == "Van De Smet"
+    assert p3["person"]["first_name"] == "Maria"
+    assert p3["slug"] == "van-de-smet-maria"

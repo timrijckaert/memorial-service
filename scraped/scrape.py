@@ -4,6 +4,8 @@ import re
 import unicodedata
 from datetime import datetime
 
+from bs4 import BeautifulSoup
+
 BASE_URL = "https://heemkringhaaltert.be/"
 
 # Two-word particles must be checked before single-word ones
@@ -75,3 +77,59 @@ LETTER_PAGES = {
     "T": 9908, "U": 9919, "V": 5695, "Ve": 9953, "W": 9924,
     "X": 9938, "Y": 9942, "Z": 9948,
 }
+
+
+def parse_page(html: str, page_url: str) -> list[dict]:
+    """Parse a letter page's HTML table into a list of person dicts."""
+    soup = BeautifulSoup(html, "lxml")
+    table = soup.find("table")
+    if not table:
+        return []
+
+    persons = []
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) < 6:
+            continue
+
+        # Extract name and image link
+        name_cell = cells[0]
+        link = name_cell.find("a")
+        full_name = name_cell.get_text(strip=True)
+        image_url = link["href"] if link and link.has_attr("href") else None
+
+        # Extract other fields
+        eega = cells[1].get_text(strip=True)
+        birth_place = cells[2].get_text(strip=True)
+        birth_date_raw = cells[3].get_text(strip=True)
+        death_place = cells[4].get_text(strip=True)
+        death_date_raw = cells[5].get_text(strip=True)
+
+        # Transform
+        last_name, first_name = split_name(full_name)
+        spouses = [eega] if eega and eega != "—" else []
+
+        slug = make_slug(last_name, first_name)
+
+        person = {
+            "person": {
+                "first_name": first_name,
+                "last_name": last_name,
+                "birth_date": convert_date(birth_date_raw),
+                "birth_place": birth_place or None,
+                "death_date": convert_date(death_date_raw),
+                "death_place": death_place or None,
+                "age_at_death": None,
+                "spouses": spouses,
+            },
+            "notes": [],
+            "source": {
+                "url": page_url,
+                "image_url": image_url,
+                "image_file": f"{slug}.jpg" if image_url else None,
+            },
+            "slug": slug,
+        }
+        persons.append(person)
+
+    return persons
