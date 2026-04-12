@@ -125,7 +125,15 @@ def parse_page(html: str, page_url: str) -> list[dict]:
             last_name, first_name = split_name(full_name)
             spouses = [eega] if eega and eega != "—" else []
 
-            slug = make_slug(last_name, first_name)
+            # Use image filename as slug (unique), fall back to name-based slug
+            if image_url and image_url.lower().endswith((".jpg", ".jpeg", ".png")):
+                image_filename = image_url.rsplit("/", 1)[-1]
+                slug = image_filename.rsplit(".", 1)[0].lower()
+                image_file = image_filename
+            else:
+                slug = make_slug(last_name, first_name)
+                image_file = None
+                image_url = None  # not a real image URL
 
             person = {
                 "person": {
@@ -142,7 +150,7 @@ def parse_page(html: str, page_url: str) -> list[dict]:
                 "source": {
                     "url": page_url,
                     "image_url": image_url,
-                    "image_file": f"{slug}.jpg" if image_url else None,
+                    "image_file": image_file,
                 },
                 "slug": slug,
             }
@@ -150,21 +158,6 @@ def parse_page(html: str, page_url: str) -> list[dict]:
 
     return persons
 
-
-def deduplicate_slugs(persons: list[dict]) -> None:
-    """Append -2, -3, etc. to duplicate slugs. Mutates in place."""
-    seen: dict[str, int] = {}
-    for person in persons:
-        slug = person["slug"]
-        if slug in seen:
-            seen[slug] += 1
-            new_slug = f"{slug}-{seen[slug]}"
-            person["slug"] = new_slug
-            # Update image_file to match
-            if person["source"]["image_file"]:
-                person["source"]["image_file"] = f"{new_slug}.jpg"
-        else:
-            seen[slug] = 1
 
 
 def write_person_json(person: dict, json_dir: Path) -> bool:
@@ -272,15 +265,6 @@ async def run() -> None:
             persons = parse_page(html, page_url)
             all_persons.extend(persons)
         print(f"  Found {len(all_persons)} persons total")
-
-        # Deduplicate slugs (log duplicates)
-        seen_slugs: dict[str, int] = {}
-        for p in all_persons:
-            seen_slugs[p["slug"]] = seen_slugs.get(p["slug"], 0) + 1
-        for slug, count in seen_slugs.items():
-            if count > 1:
-                logger.info(f"Duplicate name ({count}x): {slug}")
-        deduplicate_slugs(all_persons)
 
         # Write JSON files
         new_count = 0

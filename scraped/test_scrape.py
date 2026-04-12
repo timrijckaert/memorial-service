@@ -1,7 +1,7 @@
 """Tests for heemkring scraper."""
 
 import pytest
-from scrape import LETTER_PAGES, convert_date, deduplicate_slugs, make_slug, split_name
+from scrape import LETTER_PAGES, convert_date, make_slug, split_name
 
 
 def test_letter_pages_has_28_entries():
@@ -109,6 +109,7 @@ def test_parse_page_extracts_persons():
     assert p1["person"]["age_at_death"] is None
     assert p1["person"]["spouses"] == ["Boone Pierre"]
     assert p1["source"]["image_url"] == "https://heemkringhaaltert.be/wp-content/uploads/2025/12/Ackerman-Alina.jpg"
+    assert p1["source"]["image_file"] == "Ackerman-Alina.jpg"
     assert p1["slug"] == "ackerman-alina"
 
 
@@ -125,21 +126,6 @@ def test_parse_page_tussenvoegsel_name():
     assert p3["person"]["last_name"] == "Van De Smet"
     assert p3["person"]["first_name"] == "Maria"
     assert p3["slug"] == "van-de-smet-maria"
-
-
-def test_deduplicate_slugs():
-    persons = [
-        {"slug": "de-smet-maria", "person": {"last_name": "De Smet", "first_name": "Maria"}, "source": {"image_file": "de-smet-maria.jpg"}},
-        {"slug": "janssens-karel", "person": {"last_name": "Janssens", "first_name": "Karel"}, "source": {"image_file": "janssens-karel.jpg"}},
-        {"slug": "de-smet-maria", "person": {"last_name": "De Smet", "first_name": "Maria"}, "source": {"image_file": "de-smet-maria.jpg"}},
-        {"slug": "de-smet-maria", "person": {"last_name": "De Smet", "first_name": "Maria"}, "source": {"image_file": "de-smet-maria.jpg"}},
-    ]
-    deduplicate_slugs(persons)
-    slugs = [p["slug"] for p in persons]
-    assert slugs == ["de-smet-maria", "janssens-karel", "de-smet-maria-2", "de-smet-maria-3"]
-    # Also check image_file was updated
-    assert persons[2]["source"]["image_file"] == "de-smet-maria-2.jpg"
-    assert persons[3]["source"]["image_file"] == "de-smet-maria-3.jpg"
 
 
 # ── write_person_json ──────────────────────────────────────────────────────────
