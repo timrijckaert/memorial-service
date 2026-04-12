@@ -26,6 +26,7 @@ IMPORTANT RULES:
   - "echtgenoot van" / "echtgenote van" / "man van" / "vrouw van" = "husband of" / "wife of" → these introduce a SPOUSE.
   - "weduwnaar van" / "weduwe van" = "widower of" / "widow of" → these introduce a DECEASED SPOUSE.
   - Do NOT confuse a parent's name for a spouse. Pay close attention to the keyword preceding the name.
+  - The deceased's own name must NEVER appear in the spouses list. The spouses list contains ONLY the names of people the deceased was married to — never the deceased themselves.
 - AGE AT DEATH — STRICT RULES:
   - Extract age_at_death ONLY if the card explicitly states the age in the text (e.g. "in den ouderdom van 78 jaren", "oud 65 jaar").
   - DO NOT calculate age_at_death from birth_date and death_date. NEVER do arithmetic on dates to derive this field.
@@ -107,7 +108,9 @@ Some memorial cards use old Dutch or regional month names. Treat these as their 
 - Op allerheiligen -> 1 November
 - Op allerzielen -> 2 November
 
-COMMON OCR MISSPELLINGS:
+MANDATORY CORRECTIONS:
+You MUST apply every correction in the list below. If the OCR text contains any of the left-hand spellings, always replace with the right-hand spelling. Do not leave OCR-garbled place names uncorrected.
+
 Haeltert -> Haaltert,
 Kerkxken -> Kerksken,
 Haciltert -> Haaltert,
