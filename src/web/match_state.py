@@ -202,6 +202,8 @@ class MatchState:
             removed_card_id = pair.get("card_id")
             self._unmatched.append(pair["image_a"])
             self._unmatched.append(pair["image_b"])
+            self._restored_files.discard(pair["image_a"]["filename"])
+            self._restored_files.discard(pair["image_b"]["filename"])
 
         # Delete skeleton JSON outside the lock
         if removed_card_id:
