@@ -17,6 +17,14 @@
       "args": ["-v"],
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}/.venv/bin/python"
+    },
+    {
+      "name": "Scrape Heemkring",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scraped/scrape.py",
+      "cwd": "${workspaceFolder}/scraped",
+      "python": "${workspaceFolder}/scraped/.venv/bin/python"
     }
   ]
 }
