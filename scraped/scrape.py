@@ -195,7 +195,8 @@ async def fetch_pages(client: httpx.AsyncClient) -> dict[str, str]:
 
 
 async def download_image(
-    client: httpx.AsyncClient, image_url: str, dest: Path, logger: logging.Logger, retries: int = 3
+    client: httpx.AsyncClient, image_url: str, dest: Path, person_name: str,
+    logger: logging.Logger, retries: int = 3,
 ) -> bool:
     """Download image if dest doesn't exist. Retries on failure. Returns True if downloaded."""
     if dest.exists():
@@ -210,7 +211,7 @@ async def download_image(
             if attempt < retries:
                 await asyncio.sleep(2 * attempt)
             else:
-                logger.error(f"Image download failed after {retries} attempts: {image_url} -> {e}")
+                logger.error(f"Image failed for '{person_name}': {e} (url: {image_url})")
                 return False
     return False
 
@@ -228,7 +229,9 @@ async def download_images(
         dest = images_dir / image_file
         if dest.exists():
             continue
-        tasks.append(download_image(client, image_url, dest, logger))
+        p = person["person"]
+        person_name = f"{p['last_name']} {p['first_name']}"
+        tasks.append(download_image(client, image_url, dest, person_name, logger))
 
     if not tasks:
         return 0
