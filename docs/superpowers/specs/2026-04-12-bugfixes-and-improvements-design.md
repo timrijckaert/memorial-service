@@ -29,18 +29,26 @@ Actually, re-examining: for Belgian naming conventions the last name IS typicall
 **Files:**
 - `src/web/static/app.js` — add a `markFormDirty()` function called by `oninput` on all review form fields, and wire it into `loadReviewCard()` setup and `addSpouseInput()`.
 
-## Issue 3: Age at Death — LLM Calculates Instead of Extracting
+## Issue 3: Age at Death — Two-Part Fix (LLM + Review UI)
 
-**Problem:** The prompt already says to set `age_at_death` to null when both dates are present, but the LLM ignores this. The user wants the age to be extracted from the card text only, never calculated.
+**Problem:** The LLM calculates age from dates instead of extracting it from the card text. The user wants the LLM to only extract explicitly stated ages, and the review UI to auto-calculate age when both dates are present.
 
-**Solution:** Rewrite the age_at_death instruction to be stronger and clearer:
+**Solution — Part A (LLM prompt):** Rewrite the age_at_death instruction to be stronger and clearer:
 - Move it into its own dedicated section with a header
 - Use explicit "DO NOT" language
-- Reframe: "Extract age_at_death ONLY if the card explicitly states the age (e.g., 'in den ouderdom van 78 jaren'). NEVER calculate it from birth and death dates."
+- Reframe: "Extract age_at_death ONLY if the card explicitly states the age (e.g., 'in den ouderdom van 78 jaren'). NEVER calculate it from birth and death dates. If the age is not explicitly written on the card, set age_at_death to null."
 - Add an example showing both dates present + age null
+
+**Solution — Part B (Review UI auto-calculation):** Add dynamic age calculation in the review tab:
+- When both `birth_date` and `death_date` fields have valid dates, auto-calculate the age using plain JS date math and display it in the `age_at_death` field
+- Wire this to `oninput` on both date fields so it updates as the user types
+- Make the `age_at_death` field read-only when both dates are present (it's computed)
+- If only one date is present, the field remains editable (for the LLM-extracted value)
+- Calculation: full years between birth and death (account for month/day, not just year subtraction)
 
 **Files:**
 - `prompts/extract_person_system.txt` — rewrite age_at_death section
+- `src/web/static/app.js` — add `computeAge()` function, wire to date field `oninput` events, toggle read-only state
 
 ## Issue 4: Place Name Correction (Haeltert -> Haaltert)
 
@@ -109,7 +117,7 @@ Actually, re-examining: for Belgian naming conventions the last name IS typicall
 | File | Issues |
 |------|--------|
 | `src/review/cards.py` | 1 (title case) |
-| `src/web/static/app.js` | 2 (saved feedback) |
+| `src/web/static/app.js` | 2 (saved feedback), 3B (age auto-calc) |
 | `prompts/extract_person_system.txt` | 3, 4, 5 (LLM prompt) |
 | `src/web/match_state.py` | 6 (restore), 7 (remove stitch) |
 | `src/main.py` or `src/web/server.py` | 6 (call restore at startup) |
