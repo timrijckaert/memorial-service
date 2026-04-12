@@ -128,3 +128,68 @@ def test_deduplicate_slugs():
     # Also check image_file was updated
     assert persons[2]["source"]["image_file"] == "de-smet-maria-2.jpg"
     assert persons[3]["source"]["image_file"] == "de-smet-maria-3.jpg"
+
+
+# ── write_person_json ──────────────────────────────────────────────────────────
+
+import json
+from pathlib import Path
+from scrape import write_person_json
+
+
+def test_write_person_json(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+
+    person = {
+        "person": {
+            "first_name": "Alina",
+            "last_name": "Ackerman",
+            "birth_date": "1902-11-15",
+            "birth_place": "Everberg",
+            "death_date": "1966-12-16",
+            "death_place": "Haaltert",
+            "age_at_death": None,
+            "spouses": ["Boone Pierre"],
+        },
+        "notes": [],
+        "source": {
+            "url": "https://heemkringhaaltert.be/?page_id=9498",
+            "image_url": "https://example.com/image.jpg",
+            "image_file": "ackerman-alina.jpg",
+        },
+        "slug": "ackerman-alina",
+    }
+
+    write_person_json(person, json_dir)
+
+    out_file = json_dir / "ackerman-alina.json"
+    assert out_file.exists()
+    data = json.loads(out_file.read_text())
+    assert data["person"]["first_name"] == "Alina"
+    # slug should be stripped from output
+    assert "slug" not in data
+
+
+def test_write_person_json_skips_existing(tmp_path):
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+
+    person = {
+        "person": {"first_name": "Alina", "last_name": "Ackerman",
+                    "birth_date": None, "birth_place": None,
+                    "death_date": None, "death_place": None,
+                    "age_at_death": None, "spouses": []},
+        "notes": [],
+        "source": {"url": "", "image_url": None, "image_file": None},
+        "slug": "ackerman-alina",
+    }
+
+    # Pre-create file
+    (json_dir / "ackerman-alina.json").write_text('{"existing": true}')
+
+    written = write_person_json(person, json_dir)
+    assert written is False
+    # Should not overwrite
+    data = json.loads((json_dir / "ackerman-alina.json").read_text())
+    assert data == {"existing": True}

@@ -1,9 +1,13 @@
 """Scrape heemkringhaaltert.be memorial card data into PERSON_SCHEMA JSON."""
 
+import asyncio
+import json
 import re
 import unicodedata
 from datetime import datetime
+from pathlib import Path
 
+import httpx
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://heemkringhaaltert.be/"
@@ -149,3 +153,115 @@ def deduplicate_slugs(persons: list[dict]) -> None:
                 person["source"]["image_file"] = f"{new_slug}.jpg"
         else:
             seen[slug] = 1
+
+
+def write_person_json(person: dict, json_dir: Path) -> bool:
+    """Write person dict to JSON file. Returns False if skipped (already exists)."""
+    slug = person["slug"]
+    out_file = json_dir / f"{slug}.json"
+
+    if out_file.exists():
+        return False
+
+    # Strip internal slug field before writing
+    output = {k: v for k, v in person.items() if k != "slug"}
+    out_file.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n")
+    return True
+
+
+async def fetch_pages(client: httpx.AsyncClient) -> dict[str, str]:
+    """Fetch all letter pages in parallel. Returns {letter: html}."""
+    async def fetch_one(letter: str, page_id: int) -> tuple[str, str]:
+        url = f"{BASE_URL}?page_id={page_id}"
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return letter, resp.text
+
+    tasks = [fetch_one(letter, pid) for letter, pid in LETTER_PAGES.items()]
+    results = await asyncio.gather(*tasks)
+    return dict(results)
+
+
+async def download_image(client: httpx.AsyncClient, image_url: str, dest: Path) -> bool:
+    """Download image if dest doesn't exist. Returns True if downloaded."""
+    if dest.exists():
+        return False
+    resp = await client.get(image_url)
+    resp.raise_for_status()
+    dest.write_bytes(resp.content)
+    return True
+
+
+async def download_images(client: httpx.AsyncClient, persons: list[dict], images_dir: Path) -> int:
+    """Download all images in parallel. Returns count of newly downloaded."""
+    tasks = []
+    for person in persons:
+        image_url = person["source"]["image_url"]
+        image_file = person["source"]["image_file"]
+        if not image_url or not image_file:
+            continue
+        dest = images_dir / image_file
+        if dest.exists():
+            continue
+        tasks.append(download_image(client, image_url, dest))
+
+    if not tasks:
+        return 0
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    downloaded = sum(1 for r in results if r is True)
+    errors = sum(1 for r in results if isinstance(r, Exception))
+    if errors:
+        print(f"  Warning: {errors} image download(s) failed")
+    return downloaded
+
+
+async def run() -> None:
+    """Main scraper entry point."""
+    script_dir = Path(__file__).parent
+    json_dir = script_dir / "json"
+    images_dir = script_dir / "images"
+    json_dir.mkdir(exist_ok=True)
+    images_dir.mkdir(exist_ok=True)
+
+    print("Fetching letter pages...")
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        pages = await fetch_pages(client)
+        print(f"  Fetched {len(pages)} pages")
+
+        # Parse all pages
+        all_persons = []
+        for letter, html in sorted(pages.items()):
+            page_url = f"{BASE_URL}?page_id={LETTER_PAGES[letter]}"
+            persons = parse_page(html, page_url)
+            all_persons.extend(persons)
+        print(f"  Found {len(all_persons)} persons total")
+
+        # Deduplicate slugs
+        deduplicate_slugs(all_persons)
+
+        # Write JSON files
+        new_count = 0
+        skip_count = 0
+        for person in all_persons:
+            if write_person_json(person, json_dir):
+                new_count += 1
+            else:
+                skip_count += 1
+
+        print(f"  JSON: {new_count} new, {skip_count} skipped (existing)")
+
+        # Download images
+        print("Downloading images...")
+        img_count = await download_images(client, all_persons, images_dir)
+        print(f"  Images: {img_count} downloaded")
+
+    print("Done!")
+
+
+def main():
+    asyncio.run(run())
+
+
+if __name__ == "__main__":
+    main()
