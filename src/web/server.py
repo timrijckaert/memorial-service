@@ -9,7 +9,6 @@ from urllib.parse import unquote
 
 from src.extraction import make_backend
 from src.export import run_export
-from src.images.stitching import stitch_pair
 from src.naming import derive_filename
 from src.web.match_state import MatchState
 from src.review import list_cards, load_card, save_card

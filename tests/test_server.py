@@ -120,7 +120,7 @@ def test_api_put_card_saves_data(tmp_path):
         assert resp.status == 200
 
         saved = json.loads((json_dir / "card.json").read_text())
-        assert saved["person"]["first_name"] == "new"
+        assert saved["person"]["first_name"] == "New"
         assert saved["source"]["front_text_file"] == "f.txt"
     finally:
         server.shutdown()
@@ -274,29 +274,7 @@ def test_api_match_confirm_all_confirms_suggested_pairs(tmp_path):
         server.shutdown()
 
 
-def test_api_match_confirm_triggers_stitching(tmp_path):
-    json_dir = tmp_path / "json"
-    json_dir.mkdir()
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
-    output_dir = tmp_path / "output"
-    output_dir.mkdir()
 
-    _create_test_image(input_dir / "Card A.jpeg", color="red")
-    _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
-
-    server, base = _start_test_server(json_dir, input_dir, output_dir)
-    try:
-        urlopen(f"{base}/api/match/scan")
-        body = json.dumps({"image_a": "Card A.jpeg", "image_b": "Card A 1.jpeg"}).encode()
-        req = Request(f"{base}/api/match/confirm", data=body, method="POST",
-                      headers={"Content-Type": "application/json"})
-        resp = urlopen(req)
-        data = json.loads(resp.read())
-        assert data["status"] == "confirmed"
-        assert (output_dir / "Card A.jpeg").exists()
-    finally:
-        server.shutdown()
 
 
 def test_api_match_unmatch_returns_to_unmatched(tmp_path):

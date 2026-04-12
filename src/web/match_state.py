@@ -7,7 +7,6 @@ import uuid
 from pathlib import Path
 
 from src.images.pairing import scan_and_match, read_image_metadata, similarity_score, normalize_filename
-from src.images.stitching import stitch_pair
 
 
 class MatchState:
@@ -151,7 +150,7 @@ class MatchState:
             }
 
     def confirm(self, filename_a: str, filename_b: str) -> dict:
-        """Confirm a pair and trigger stitching."""
+        """Confirm a pair."""
         with self._lock:
             matched_pair = None
             for pair in self._pairs:
@@ -171,16 +170,6 @@ class MatchState:
             )
             matched_pair["card_id"] = card_id
         card_id = matched_pair["card_id"]
-
-        # Stitch in background-safe way (outside lock)
-        path_a = self._input_dir / filename_a
-        path_b = self._input_dir / filename_b
-        output_name = Path(filename_a).stem + ".jpeg"
-        output_path = self._output_dir / output_name
-        try:
-            stitch_pair(path_a, path_b, output_path)
-        except Exception:
-            pass  # Stitching failure doesn't block confirmation
 
         return {"status": "confirmed", "card_id": card_id}
 
@@ -271,16 +260,13 @@ class MatchState:
 
     def confirm_all(self) -> dict:
         """Confirm all suggested pairs."""
-        to_stitch = []
+        confirmed_count = 0
         newly_confirmed = []
         with self._lock:
             for pair in self._pairs:
                 if pair["status"] == "suggested":
                     pair["status"] = "confirmed"
-                    to_stitch.append((
-                        pair["image_a"]["filename"],
-                        pair["image_b"]["filename"],
-                    ))
+                    confirmed_count += 1
                     if "card_id" not in pair:
                         newly_confirmed.append(pair)
 
@@ -292,17 +278,7 @@ class MatchState:
             )
             pair["card_id"] = card_id
 
-        for filename_a, filename_b in to_stitch:
-            path_a = self._input_dir / filename_a
-            path_b = self._input_dir / filename_b
-            output_name = Path(filename_a).stem + ".jpeg"
-            output_path = self._output_dir / output_name
-            try:
-                stitch_pair(path_a, path_b, output_path)
-            except Exception:
-                pass
-
-        return {"status": "confirmed", "count": len(to_stitch)}
+        return {"status": "confirmed", "count": confirmed_count}
 
     def get_confirmed_items(self) -> tuple[list[tuple[str, Path, Path]], list[tuple[str, Path]]]:
         """Return confirmed pairs and singles with card_ids for the extract pipeline."""
