@@ -1,5 +1,9 @@
 """Scrape heemkringhaaltert.be memorial card data into PERSON_SCHEMA JSON."""
 
+import re
+import unicodedata
+from datetime import datetime
+
 BASE_URL = "https://heemkringhaaltert.be/"
 
 # Two-word particles must be checked before single-word ones
@@ -35,6 +39,33 @@ def split_name(full_name: str) -> tuple[str, str]:
     last_name = " ".join(words[:surname_end])
     first_name = " ".join(words[surname_end:])
     return last_name, first_name
+
+def convert_date(date_str: str) -> str | None:
+    """Convert DD/MM/YYYY to YYYY-MM-DD. Returns None for empty/invalid."""
+    date_str = date_str.strip()
+    if not date_str or date_str == "—":
+        return None
+    try:
+        dt = datetime.strptime(date_str, "%d/%m/%Y")
+        return dt.strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def make_slug(last_name: str, first_name: str) -> str:
+    """Create a filename-safe slug from name parts.
+
+    Normalizes unicode to ASCII (Aloïs -> Alois), lowercases,
+    replaces non-alphanum with hyphens, collapses multiple hyphens.
+    """
+    full = f"{last_name} {first_name}"
+    # Normalize unicode to ASCII
+    nfkd = unicodedata.normalize("NFKD", full)
+    ascii_str = nfkd.encode("ascii", "ignore").decode("ascii")
+    # Lowercase, replace non-alphanum with hyphens, collapse and strip
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_str.lower()).strip("-")
+    return slug
+
 
 LETTER_PAGES = {
     "A": 9498, "B": 9516, "C": 9560, "D": 9580, "D'h": 9706,
