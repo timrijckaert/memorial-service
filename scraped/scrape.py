@@ -133,3 +133,19 @@ def parse_page(html: str, page_url: str) -> list[dict]:
         persons.append(person)
 
     return persons
+
+
+def deduplicate_slugs(persons: list[dict]) -> None:
+    """Append -2, -3, etc. to duplicate slugs. Mutates in place."""
+    seen: dict[str, int] = {}
+    for person in persons:
+        slug = person["slug"]
+        if slug in seen:
+            seen[slug] += 1
+            new_slug = f"{slug}-{seen[slug]}"
+            person["slug"] = new_slug
+            # Update image_file to match
+            if person["source"]["image_file"]:
+                person["source"]["image_file"] = f"{new_slug}.jpg"
+        else:
+            seen[slug] = 1
