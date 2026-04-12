@@ -50,6 +50,18 @@ from scrape import parse_page
 
 FIXTURE_HTML = """
 <table>
+<tbody>
+<tr>
+  <td><a href="https://heemkringhaaltert.be/?page_id=9498">A</a></td>
+  <td><a href="https://heemkringhaaltert.be/?page_id=9516">B</a></td>
+  <td><a href="https://heemkringhaaltert.be/?page_id=9560">C</a></td>
+  <td><a href="https://heemkringhaaltert.be/?page_id=9580">D</a></td>
+  <td><a href="https://heemkringhaaltert.be/?page_id=9706">D'h</a></td>
+  <td><a href="https://heemkringhaaltert.be/?page_id=9715">E</a></td>
+</tr>
+</tbody>
+</table>
+<table>
 <thead>
 <tr><th>Naam</th><th>Eega</th><th>Geboren te</th><th>Geboren op</th><th>Overleden te</th><th>Overleden op</th></tr>
 </thead>

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import re
 import unicodedata
 from datetime import datetime
@@ -9,6 +10,8 @@ from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
+
+LOG_FILE = Path(__file__).parent / "scrape.log"
 
 BASE_URL = "https://heemkringhaaltert.be/"
 
@@ -101,6 +104,10 @@ def parse_page(html: str, page_url: str) -> list[dict]:
             if cells[0].find("strong"):
                 continue
 
+            # Skip navigation rows (letter links like A, B, C -- no dates)
+            if not re.search(r"\d{2}/\d{2}/\d{4}", cells[3].get_text()):
+                continue
+
             # Extract name and image link
             name_cell = cells[0]
             link = name_cell.find("a")
@@ -187,17 +194,30 @@ async def fetch_pages(client: httpx.AsyncClient) -> dict[str, str]:
     return dict(results)
 
 
-async def download_image(client: httpx.AsyncClient, image_url: str, dest: Path) -> bool:
-    """Download image if dest doesn't exist. Returns True if downloaded."""
+async def download_image(
+    client: httpx.AsyncClient, image_url: str, dest: Path, logger: logging.Logger, retries: int = 3
+) -> bool:
+    """Download image if dest doesn't exist. Retries on failure. Returns True if downloaded."""
     if dest.exists():
         return False
-    resp = await client.get(image_url)
-    resp.raise_for_status()
-    dest.write_bytes(resp.content)
-    return True
+    for attempt in range(1, retries + 1):
+        try:
+            resp = await client.get(image_url)
+            resp.raise_for_status()
+            dest.write_bytes(resp.content)
+            return True
+        except (httpx.HTTPError, OSError) as e:
+            if attempt < retries:
+                await asyncio.sleep(2 * attempt)
+            else:
+                logger.error(f"Image download failed after {retries} attempts: {image_url} -> {e}")
+                return False
+    return False
 
 
-async def download_images(client: httpx.AsyncClient, persons: list[dict], images_dir: Path) -> int:
+async def download_images(
+    client: httpx.AsyncClient, persons: list[dict], images_dir: Path, logger: logging.Logger
+) -> int:
     """Download all images in parallel. Returns count of newly downloaded."""
     tasks = []
     for person in persons:
@@ -208,16 +228,16 @@ async def download_images(client: httpx.AsyncClient, persons: list[dict], images
         dest = images_dir / image_file
         if dest.exists():
             continue
-        tasks.append(download_image(client, image_url, dest))
+        tasks.append(download_image(client, image_url, dest, logger))
 
     if not tasks:
         return 0
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    results = await asyncio.gather(*tasks)
     downloaded = sum(1 for r in results if r is True)
-    errors = sum(1 for r in results if isinstance(r, Exception))
-    if errors:
-        print(f"  Warning: {errors} image download(s) failed")
+    failed = sum(1 for r in results if r is False)
+    if failed:
+        print(f"  Warning: {failed} image download(s) failed (see {LOG_FILE.name})")
     return downloaded
 
 
@@ -228,6 +248,13 @@ async def run() -> None:
     images_dir = script_dir / "images"
     json_dir.mkdir(exist_ok=True)
     images_dir.mkdir(exist_ok=True)
+
+    # Set up file logging
+    logger = logging.getLogger("scraper")
+    logger.setLevel(logging.INFO)
+    handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(levelname)s  %(message)s"))
+    logger.addHandler(handler)
 
     print("Fetching letter pages...")
     limits = httpx.Limits(max_connections=5, max_keepalive_connections=5)
@@ -243,7 +270,13 @@ async def run() -> None:
             all_persons.extend(persons)
         print(f"  Found {len(all_persons)} persons total")
 
-        # Deduplicate slugs
+        # Deduplicate slugs (log duplicates)
+        seen_slugs: dict[str, int] = {}
+        for p in all_persons:
+            seen_slugs[p["slug"]] = seen_slugs.get(p["slug"], 0) + 1
+        for slug, count in seen_slugs.items():
+            if count > 1:
+                logger.info(f"Duplicate name ({count}x): {slug}")
         deduplicate_slugs(all_persons)
 
         # Write JSON files
@@ -259,10 +292,10 @@ async def run() -> None:
 
         # Download images
         print("Downloading images...")
-        img_count = await download_images(client, all_persons, images_dir)
+        img_count = await download_images(client, all_persons, images_dir, logger)
         print(f"  Images: {img_count} downloaded")
 
-    print("Done!")
+    print(f"Done! (log: {LOG_FILE.name})")
 
 
 def main():
