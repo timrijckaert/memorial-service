@@ -10,3 +10,4 @@ config.json
 scraped/.venv/
 scraped/json/
 scraped/images/
+scraped/scrape.log

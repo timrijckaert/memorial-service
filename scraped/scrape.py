@@ -279,29 +279,30 @@ async def run() -> None:
                     f"{person['broken_url']}"
                 )
 
-        # Write JSON files (fall back to name-based slug on collision)
+        # Resolve slug collisions upfront (before touching the filesystem)
+        seen_slugs: dict[str, int] = {}
+        for person in all_persons:
+            slug = person["slug"]
+            if slug in seen_slugs:
+                # Different person shares same image URL on the website
+                p = person["person"]
+                name = f"{p['last_name']} {p['first_name']}"
+                fallback = make_slug(p["last_name"], p["first_name"])
+                logger.warning(
+                    f"Slug collision for '{name}': {slug} already taken, "
+                    f"using fallback '{fallback}'"
+                )
+                person["slug"] = fallback
+            seen_slugs[person["slug"]] = 1
+
+        # Write JSON files (skip if exists = idempotent)
         new_count = 0
         skip_count = 0
         for person in all_persons:
             if write_person_json(person, json_dir):
                 new_count += 1
-            elif not (json_dir / f"{person['slug']}.json").exists():
-                # Shouldn't happen -- file didn't exist but write returned False
-                skip_count += 1
             else:
-                # Slug collision: different person shares same image URL on the website
-                p = person["person"]
-                name = f"{p['last_name']} {p['first_name']}"
-                fallback = make_slug(p["last_name"], p["first_name"])
-                logger.warning(
-                    f"Slug collision for '{name}': {person['slug']} already exists, "
-                    f"using fallback '{fallback}'"
-                )
-                person["slug"] = fallback
-                if write_person_json(person, json_dir):
-                    new_count += 1
-                else:
-                    skip_count += 1
+                skip_count += 1
 
         print(f"  JSON: {new_count} new, {skip_count} skipped (existing)")
 
