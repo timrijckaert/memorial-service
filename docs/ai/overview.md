@@ -23,6 +23,12 @@ The application runs a 4-stage pipeline via a browser-based UI:
 - **Image processing:** Pillow for stitching
 - **Async:** `asyncio` for parallel OCR, sequential LLM processing
 
+## Scraper (scraped/)
+
+A separate, disposable tool that scrapes existing memorial card data from the Heemkring Haaltert website (heemkringhaaltert.be) into the same PERSON_SCHEMA JSON format. Self-contained sub-project with its own venv and dependencies (`httpx`, `beautifulsoup4`, `lxml`).
+
+Scrapes all 28 letter pages (A-Z plus D'h and Ve), parses the HTML tables, converts dates to ISO 8601, splits names using tussenvoegsel-aware logic, and downloads memorial card images. Idempotent — safe to re-run.
+
 ## Target Usage
 
 Single user, localhost, personal genealogy archive. Not designed for multi-user or deployment.

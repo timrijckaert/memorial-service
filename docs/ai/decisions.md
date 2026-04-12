@@ -32,6 +32,12 @@ Image stitching (combining front+back into a single image) happens only during e
 
 *See: 2026-04-12-bugfixes-and-improvements-design.md, Task 7*
 
+## Scraper: Image URL as File Key
+
+Scraped JSON files are named after the image URL filename (e.g. `Scheerlinck-Maria-Celina-Haaltert-bidprentje-03-mei-1929.json`) rather than a name-based slug. Image URLs are naturally unique because they encode name, place, and death date. This avoids the need for deduplication logic when multiple people share the same name. Falls back to a name-based slug only for broken image links (2 out of 1567 entries).
+
+*See: 2026-04-12-heemkring-scraper-design.md*
+
 ## State Persistence via JSON Restore
 
 Match state (confirmed pairs, singles, unmatched images) is rebuilt on restart by scanning `output/json/` files and cross-referencing with `input/` images. No separate state file — the JSON output files *are* the persistent state.

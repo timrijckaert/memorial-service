@@ -34,6 +34,15 @@ All tests use `tmp_path` fixtures and mock external dependencies (Tesseract, LLM
 3. Add a branch in `make_backend()` to instantiate it based on `config.json`.
 4. No other changes needed — the pipeline uses `LLMBackend` generically.
 
+## Running the Scraper
+
+```bash
+cd scraped && .venv/bin/python scrape.py    # or use VS Code "Scrape Heemkring" config
+cd scraped && .venv/bin/python -m pytest test_scrape.py -v  # run scraper tests
+```
+
+The scraper has its own venv (`scraped/.venv/`). First run creates `scraped/json/` and `scraped/images/` directories. Re-runs skip already-scraped persons. Check `scraped/scrape.log` for broken links and slug collisions.
+
 ## Rebuilding the AI Knowledge Base
 
 ```bash
