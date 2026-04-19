@@ -198,3 +198,20 @@ def test_interpret_text_merges_into_existing_skeleton(tmp_path):
     assert result["source"]["back_image_file"] == "scan_047_verso.jpeg"
     assert result["source"]["front_text_file"] == "card_front.txt"
     assert result["source"]["back_text_file"] == "card_back.txt"
+
+
+def test_interpret_text_derives_locality(tmp_path):
+    """interpret_text should derive locality from death_place/birth_place."""
+    backend = MagicMock()
+    backend.generate_text.return_value = SAMPLE_LLM_RESPONSE
+
+    front_text = tmp_path / "card_front.txt"
+    back_text = tmp_path / "card_back.txt"
+    front_text.write_text("")
+    back_text.write_text("")
+    output = tmp_path / "card.json"
+
+    interpret_text(front_text, back_text, output, SYSTEM_PROMPT, USER_TEMPLATE, backend)
+
+    result = json.loads(output.read_text())
+    assert result["person"]["locality"] == "Kerksken"
