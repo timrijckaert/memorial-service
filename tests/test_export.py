@@ -124,6 +124,7 @@ def test_export_filename_collision(tmp_path):
         "death_place": None,
         "birth_date": None,
         "age_at_death": None,
+        "locality": "Haaltert",
         "spouses": [],
     }
 
@@ -136,7 +137,7 @@ def test_export_filename_collision(tmp_path):
     result = run_export(json_dir, input_dir, output_dir)
 
     assert result["exported"] == 2
-    base = "Pieters Jan bidprentje 01 juni 1950"
+    base = "Pieters Jan Haaltert bidprentje 01 juni 1950"
     assert (output_dir / "export" / f"{base}.jpeg").exists()
     assert (output_dir / "export" / f"{base} (2).jpeg").exists()
 
@@ -174,7 +175,7 @@ def test_export_skips_skeleton_only_json(tmp_path):
         json_dir, "extracted-uuid",
         person={"first_name": "Jan", "last_name": "Pieters", "birth_place": None,
                 "death_date": "1950-06-01", "death_place": None, "birth_date": None,
-                "age_at_death": None, "spouses": []},
+                "age_at_death": None, "locality": "Haaltert", "spouses": []},
         front_image="front.jpeg",
     )
 
