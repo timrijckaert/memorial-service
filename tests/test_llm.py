@@ -101,9 +101,24 @@ def test_generate_vision_returns_string(backend):
     image = _make_number_image("1923")
     result = backend.generate_vision(
         prompt="Read the number in this image. Reply with ONLY the number, nothing else.",
-        image=image,
+        images=[image],
         temperature=0.0,
         max_tokens=16,
+    )
+    assert isinstance(result, str)
+    assert len(result.strip()) > 0
+
+
+@requires_models
+def test_generate_vision_accepts_multiple_images(backend):
+    """generate_vision accepts a list of images and returns a non-empty string."""
+    image1 = _make_number_image("1923")
+    image2 = _make_number_image("1945")
+    result = backend.generate_vision(
+        prompt="Read the numbers in these images. Reply with ONLY the numbers, nothing else.",
+        images=[image1, image2],
+        temperature=0.0,
+        max_tokens=32,
     )
     assert isinstance(result, str)
     assert len(result.strip()) > 0

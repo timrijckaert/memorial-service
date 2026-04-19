@@ -51,11 +51,11 @@ class LLMBackend(Protocol):
     def generate_vision(
         self,
         prompt: str,
-        image,
+        images: list,
         temperature: float,
         max_tokens: int,
     ) -> str:
-        """Generate a text response from a prompt and a PIL image."""
+        """Generate a text response from a prompt and one or more PIL images."""
         ...
 
 
@@ -138,35 +138,39 @@ class MLXBackend:
     def generate_vision(
         self,
         prompt: str,
-        image,
+        images: list,
         temperature: float,
         max_tokens: int,
     ) -> str:
         self._ensure_vision_model()
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            image.save(f, format="PNG")
-            image_path = f.name
-
+        image_paths = []
         try:
+            for img in images:
+                f = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                img.save(f, format="PNG")
+                f.close()
+                image_paths.append(f.name)
+
             formatted_prompt = mlx_vlm_apply_chat_template(
                 self._vision_processor,
                 self._vision_config,
                 prompt,
-                num_images=1,
+                num_images=len(images),
             )
 
             result = mlx_vlm_generate(
                 self._vision_model,
                 self._vision_processor,
                 formatted_prompt,
-                image=[image_path],
+                image=image_paths,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
             return result.text
         finally:
-            os.unlink(image_path)
+            for p in image_paths:
+                os.unlink(p)
 
 
 # ---------------------------------------------------------------------------
