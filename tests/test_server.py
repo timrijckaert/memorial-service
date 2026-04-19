@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 from threading import Thread
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from urllib.error import HTTPError
 from urllib.request import urlopen, Request
 
@@ -330,23 +330,27 @@ def test_api_extract_starts_and_completes(tmp_path):
     input_dir.mkdir()
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    text_dir = output_dir / "text"
-    text_dir.mkdir()
+
+    # Create prompt files so the server loads them
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "extract_person_system.txt").write_text("system prompt")
+    (prompts_dir / "vision_read.txt").write_text("vision prompt")
 
     _create_test_image(input_dir / "Card A.jpeg", color="red")
     _create_test_image(input_dir / "Card A 1.jpeg", color="blue")
-    # Pre-merge so it appears as a valid card
-    _create_test_image(output_dir / "Card A.jpeg", color="red")
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
+        # Mock the backend so no real models are needed
+        mock_backend = MagicMock()
+        mock_backend.generate_vision.return_value = "Transcribed text"
+        server.backend = mock_backend
+
         # Scan to populate match state (auto-confirms the pair)
         urlopen(f"{base}/api/match/scan")
 
-        with patch("src.web.worker.extract_text"), \
-             patch("src.web.worker.verify_dates", return_value=[]), \
-             patch("src.web.worker.interpret_text"):
-
+        with patch("src.web.worker.interpret_transcription"):
             req = Request(f"{base}/api/extract", data=b"{}", method="POST",
                           headers={"Content-Type": "application/json"})
             resp = urlopen(req)
@@ -374,24 +378,32 @@ def test_api_extract_cancel_stops_worker(tmp_path):
     input_dir.mkdir()
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    text_dir = output_dir / "text"
-    text_dir.mkdir()
+
+    # Create prompt files so the server loads them
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "extract_person_system.txt").write_text("system prompt")
+    (prompts_dir / "vision_read.txt").write_text("vision prompt")
 
     # Create multiple pairs so there's something to cancel
     for name in ["Card A", "Card B", "Card C"]:
         _create_test_image(input_dir / f"{name}.jpeg", color="red")
         _create_test_image(input_dir / f"{name} 1.jpeg", color="blue")
-        _create_test_image(output_dir / f"{name}.jpeg", color="red")
 
     server, base = _start_test_server(json_dir, input_dir, output_dir)
     try:
-        def slow_ocr(*args, **kwargs):
+        def slow_vision(*args, **kwargs):
             time.sleep(0.5)
+            return "text"
 
-        with patch("src.web.worker.extract_text", side_effect=slow_ocr), \
-             patch("src.web.worker.verify_dates", return_value=[]), \
-             patch("src.web.worker.interpret_text"):
+        mock_backend = MagicMock()
+        mock_backend.generate_vision.side_effect = slow_vision
+        server.backend = mock_backend
 
+        # Scan to populate match state
+        urlopen(f"{base}/api/match/scan")
+
+        with patch("src.web.worker.interpret_transcription"):
             req = Request(f"{base}/api/extract", data=b"{}", method="POST",
                           headers={"Content-Type": "application/json"})
             urlopen(req)
