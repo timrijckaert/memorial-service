@@ -164,7 +164,7 @@ class MLXBackend:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return result
+            return result.text
         finally:
             os.unlink(image_path)
 

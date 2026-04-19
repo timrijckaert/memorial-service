@@ -159,7 +159,9 @@ def test_generate_vision_loads_model_lazily(mock_load, mock_config, mock_templat
     mock_load.return_value = (mock_model, mock_processor)
     mock_config.return_value = {}
     mock_template.return_value = "formatted"
-    mock_generate.return_value = "1923"
+    mock_result = MagicMock()
+    mock_result.text = "1923"
+    mock_generate.return_value = mock_result
 
     backend = MLXBackend()
     mock_load.assert_not_called()
@@ -180,7 +182,9 @@ def test_generate_vision_saves_image_and_passes_path(mock_load, mock_config, moc
     mock_load.return_value = (mock_model, mock_processor)
     mock_config.return_value = {}
     mock_template.return_value = "formatted"
-    mock_generate.return_value = "1923"
+    mock_result = MagicMock()
+    mock_result.text = "1923"
+    mock_generate.return_value = mock_result
 
     backend = MLXBackend()
     image = _make_pil_image()
@@ -207,7 +211,9 @@ def test_generate_vision_reuses_loaded_model(mock_load, mock_config, mock_templa
     mock_load.return_value = (mock_model, mock_processor)
     mock_config.return_value = {}
     mock_template.return_value = "formatted"
-    mock_generate.return_value = "1923"
+    mock_result = MagicMock()
+    mock_result.text = "1923"
+    mock_generate.return_value = mock_result
 
     backend = MLXBackend()
     image = _make_pil_image()
