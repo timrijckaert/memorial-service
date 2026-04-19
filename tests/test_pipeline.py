@@ -1,118 +1,129 @@
 # tests/test_pipeline.py
-"""Tests for the extraction pipeline orchestration."""
+"""Tests for the 2-stage extraction pipeline."""
 
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
+
+from PIL import Image
 
 from src.extraction.pipeline import extract_one, ExtractionResult
 
 
-@patch("src.extraction.pipeline.interpret_text")
-@patch("src.extraction.pipeline.verify_dates")
-@patch("src.extraction.pipeline.extract_text")
-def test_extract_one_calls_steps_in_order(mock_ocr, mock_verify, mock_interpret, tmp_path):
-    """Pipeline calls OCR, date verify, and interpret in order."""
-    front = tmp_path / "card.jpeg"
-    back = tmp_path / "card 1.jpeg"
-    front.touch()
-    back.touch()
-    text_dir = tmp_path / "text"
-    text_dir.mkdir()
+def _make_test_image(path: Path) -> Path:
+    """Create a minimal test image."""
+    img = Image.new("RGB", (100, 50), "white")
+    img.save(path, "JPEG")
+    return path
+
+
+@patch("src.extraction.pipeline.interpret_transcription")
+def test_extract_one_calls_vision_then_text(mock_interpret, tmp_path):
+    """Pipeline calls vision read then text structuring in order."""
+    front = _make_test_image(tmp_path / "card.jpeg")
+    back = _make_test_image(tmp_path / "card 1.jpeg")
     json_dir = tmp_path / "json"
     json_dir.mkdir()
-    conflicts_dir = tmp_path / "conflicts"
     mock_backend = MagicMock()
-    mock_verify.return_value = []
+    mock_backend.generate_vision.return_value = "Dominicus Meganck geboren 1813"
 
     steps = []
     result = extract_one(
-        front, back, text_dir, json_dir, conflicts_dir,
-        mock_backend, "system", "template",
+        front, back, json_dir,
+        mock_backend, "system prompt", "vision prompt",
         on_step=lambda s: steps.append(s),
     )
 
-    assert steps == ["ocr_front", "ocr_back", "date_verify", "llm_extract"]
-    assert mock_ocr.call_count == 2
-    assert mock_verify.call_count == 2
+    assert steps == ["vision_read", "text_extract"]
+    assert mock_backend.generate_vision.call_count == 1
     assert mock_interpret.call_count == 1
-    assert result.ocr_done is True
     assert result.interpreted is True
     assert result.errors == []
 
 
-@patch("src.extraction.pipeline.extract_text")
-def test_extract_one_stops_on_ocr_front_failure(mock_ocr, tmp_path):
-    """If OCR front fails, the pipeline stops and reports the error."""
-    front = tmp_path / "card.jpeg"
-    back = tmp_path / "card 1.jpeg"
-    front.touch()
-    back.touch()
-    text_dir = tmp_path / "text"
-    text_dir.mkdir()
+@patch("src.extraction.pipeline.interpret_transcription")
+def test_extract_one_sends_both_images(mock_interpret, tmp_path):
+    """Vision model receives both front and back images."""
+    front = _make_test_image(tmp_path / "card.jpeg")
+    back = _make_test_image(tmp_path / "card 1.jpeg")
     json_dir = tmp_path / "json"
     json_dir.mkdir()
-    conflicts_dir = tmp_path / "conflicts"
-    mock_ocr.side_effect = RuntimeError("tesseract crashed")
+    mock_backend = MagicMock()
+    mock_backend.generate_vision.return_value = "Some text"
 
-    result = extract_one(
-        front, back, text_dir, json_dir, conflicts_dir,
-        None, None, None,
-    )
+    extract_one(front, back, json_dir, mock_backend, "sys", "vis")
 
-    assert result.ocr_done is False
-    assert len(result.errors) == 1
-    assert "OCR front" in result.errors[0]
+    call_args = mock_backend.generate_vision.call_args
+    images = call_args.kwargs.get("images") or call_args.args[1]
+    assert len(images) == 2
 
 
-@patch("src.extraction.pipeline.extract_text")
-def test_extract_one_skips_llm_without_backend(mock_ocr, tmp_path):
-    """Without a backend, date verify and interpret are skipped."""
-    front = tmp_path / "card.jpeg"
-    back = tmp_path / "card 1.jpeg"
-    front.touch()
-    back.touch()
-    text_dir = tmp_path / "text"
-    text_dir.mkdir()
+@patch("src.extraction.pipeline.interpret_transcription")
+def test_extract_one_single_sided_card(mock_interpret, tmp_path):
+    """Single-sided cards send only one image."""
+    front = _make_test_image(tmp_path / "card.jpeg")
     json_dir = tmp_path / "json"
     json_dir.mkdir()
-    conflicts_dir = tmp_path / "conflicts"
+    mock_backend = MagicMock()
+    mock_backend.generate_vision.return_value = "Some text"
+
+    result = extract_one(front, None, json_dir, mock_backend, "sys", "vis")
+
+    call_args = mock_backend.generate_vision.call_args
+    images = call_args.kwargs.get("images") or call_args.args[1]
+    assert len(images) == 1
+    assert result.interpreted is True
+
+
+def test_extract_one_skips_without_backend(tmp_path):
+    """Without a backend, nothing runs."""
+    front = _make_test_image(tmp_path / "card.jpeg")
+    back = _make_test_image(tmp_path / "card 1.jpeg")
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
 
     steps = []
     result = extract_one(
-        front, back, text_dir, json_dir, conflicts_dir,
+        front, back, json_dir,
         None, None, None,
         on_step=lambda s: steps.append(s),
     )
 
-    assert steps == ["ocr_front", "ocr_back"]
-    assert result.ocr_done is True
+    assert steps == []
     assert result.interpreted is False
 
 
-@patch("src.extraction.pipeline.interpret_text")
-@patch("src.extraction.pipeline.verify_dates")
-@patch("src.extraction.pipeline.extract_text")
-def test_extract_one_reports_date_corrections(mock_ocr, mock_verify, mock_interpret, tmp_path):
-    """Date corrections are counted and recorded."""
-    front = tmp_path / "card.jpeg"
-    back = tmp_path / "card 1.jpeg"
-    front.touch()
-    back.touch()
-    text_dir = tmp_path / "text"
-    text_dir.mkdir()
+def test_extract_one_reports_vision_error(tmp_path):
+    """If vision read fails, the error is captured and text extract is skipped."""
+    front = _make_test_image(tmp_path / "card.jpeg")
+    back = _make_test_image(tmp_path / "card 1.jpeg")
     json_dir = tmp_path / "json"
     json_dir.mkdir()
-    conflicts_dir = tmp_path / "conflicts"
     mock_backend = MagicMock()
-    mock_verify.side_effect = [["1944 -> 1941"], []]
+    mock_backend.generate_vision.side_effect = RuntimeError("model crashed")
 
-    result = extract_one(
-        front, back, text_dir, json_dir, conflicts_dir,
-        mock_backend, "system", "template",
-    )
+    result = extract_one(front, back, json_dir, mock_backend, "sys", "vis")
 
-    assert result.verify_corrections == 1
-    assert len(result.date_fixes) == 1
+    assert len(result.errors) == 1
+    assert "vision" in result.errors[0].lower()
+    assert result.interpreted is False
+
+
+@patch("src.extraction.pipeline.interpret_transcription")
+def test_extract_one_reports_interpret_error(mock_interpret, tmp_path):
+    """If text structuring fails, the error is captured."""
+    front = _make_test_image(tmp_path / "card.jpeg")
+    back = _make_test_image(tmp_path / "card 1.jpeg")
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+    mock_backend = MagicMock()
+    mock_backend.generate_vision.return_value = "Some text"
+    mock_interpret.side_effect = ValueError("bad json")
+
+    result = extract_one(front, back, json_dir, mock_backend, "sys", "vis")
+
+    assert len(result.errors) == 1
+    assert "interpret" in result.errors[0].lower()
+    assert result.interpreted is False
 
 
 def test_extraction_result_defaults():
@@ -120,8 +131,5 @@ def test_extraction_result_defaults():
     result = ExtractionResult(front_name="test.jpeg")
 
     assert result.front_name == "test.jpeg"
-    assert result.ocr_done is False
-    assert result.verify_corrections == 0
     assert result.interpreted is False
     assert result.errors == []
-    assert result.date_fixes == []
