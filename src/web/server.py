@@ -203,26 +203,23 @@ class AppHandler(BaseHTTPRequestHandler):
             if cards_filter:
                 card_set = set(cards_filter)
                 all_items = [(cid, f, b) for cid, f, b in all_items if cid in card_set]
-            text_dir = output_dir / "text"
-            text_dir.mkdir(exist_ok=True)
             json_dir.mkdir(exist_ok=True)
-            conflicts_dir = output_dir / "date_conflicts"
 
             # Load prompt files
             prompts_dir = input_dir.parent / "prompts"
             system_prompt_path = prompts_dir / "extract_person_system.txt"
-            user_template_path = prompts_dir / "extract_person_user.txt"
+            vision_prompt_path = prompts_dir / "vision_read.txt"
             system_prompt = None
-            user_template = None
-            if system_prompt_path.exists() and user_template_path.exists():
+            vision_prompt = None
+            if system_prompt_path.exists() and vision_prompt_path.exists():
                 system_prompt = system_prompt_path.read_text()
-                user_template = user_template_path.read_text()
+                vision_prompt = vision_prompt_path.read_text()
 
             backend = self.server.backend if system_prompt else None
 
             started = self.server.worker.start(
-                all_items, text_dir, json_dir, conflicts_dir,
-                system_prompt, user_template, backend,
+                all_items, json_dir,
+                system_prompt, vision_prompt, backend,
             )
             if started:
                 self._send_json({"status": "started"})
