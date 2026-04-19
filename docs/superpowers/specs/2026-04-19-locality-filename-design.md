@@ -21,16 +21,18 @@ Exports:
 2. Else checking `person.birth_place` — same logic.
 3. Else return `"Haaltert"`.
 
+**Tie-break rule:** When a place string contains multiple known localities (e.g. `"Denderhoutem (Haaltert)"`), the match with the **earliest position** in the string wins. In this example, "Denderhoutem" starts at index 0, "Haaltert" at index 15, so "Denderhoutem" is returned.
+
 ### Persisted field: `person.locality`
 
-A new string field on the person object. Computed at extraction time and persisted in the card JSON. Editable via a dropdown in the Review page.
+A new non-nullable string field on the person object. Computed at extraction time and persisted in the card JSON. Editable via a dropdown in the Review page. Always one of the four known localities.
 
-No backwards compatibility handling — cards without `locality` simply won't have it until re-extracted or manually reviewed.
+Not added to `PERSON_SCHEMA` in `src/extraction/schema.py` — that schema defines the LLM output contract, and locality is computed post-LLM. The field is documented in the persisted data model (`docs/ai/data-model.md`).
 
 ### Integration points
 
-**Extraction pipeline** (`src/extraction/pipeline.py`):
-- After the LLM populates `person`, call `derive_locality(card)` and set `person["locality"]`.
+**LLM interpretation** (`src/extraction/interpretation.py:57-74`):
+- After title-casing and before writing the JSON to disk, call `derive_locality(existing)` and set `existing["person"]["locality"]`. This is the shared persistence path used by both `pipeline.py` (CLI) and `worker.py` (web UI), so all extraction flows get locality populated.
 
 **Filename derivation** (`src/naming.py`):
 - `derive_filename()` uses `person.get("locality")` instead of `person.get("birth_place")`.
@@ -46,11 +48,14 @@ No backwards compatibility handling — cards without `locality` simply won't ha
 **Backend** (`server.py`):
 - No changes needed — `locality` is part of `person` and flows through existing GET/PUT endpoints.
 
+**Data model docs** (`docs/ai/data-model.md`):
+- Add `locality` as a non-nullable string field to the documented `PERSON_SCHEMA` shape (the persisted shape, not the LLM output schema).
+
 ### Tests
 
 **New: `tests/test_locality.py`**
 - Exact match on death_place (e.g. `"Kerksken"` -> `"Kerksken"`)
-- Substring match on death_place (e.g. `"Denderhoutem (Haaltert)"` -> `"Denderhoutem"`)
+- Substring match on death_place (e.g. `"Denderhoutem (Haaltert)"` -> `"Denderhoutem"`, earliest position wins)
 - Fallback to birth_place when death_place doesn't match
 - Default to `"Haaltert"` when neither matches
 - Case-insensitive matching
