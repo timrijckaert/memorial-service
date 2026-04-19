@@ -2,7 +2,7 @@
 """Extraction pipeline for memorial card digitization.
 
 Public API:
-    extract_one  — Run the full 4-step pipeline for one card pair
+    extract_one  — Run the full 2-stage vision+text pipeline for one card pair
     make_backend — Create an LLM backend from config
     LLMBackend   — LLM backend abstraction
     PERSON_SCHEMA — JSON schema for structured extraction output
