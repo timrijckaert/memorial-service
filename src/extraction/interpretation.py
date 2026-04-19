@@ -1,5 +1,5 @@
 # src/extraction/interpretation.py
-"""LLM-based interpretation of OCR text into structured biographical data."""
+"""LLM-based structuring of vision transcriptions into biographical data."""
 
 import json
 from pathlib import Path
@@ -9,31 +9,22 @@ from src.extraction.schema import PERSON_SCHEMA
 from src.locality import derive_locality
 
 
-def interpret_text(
-    front_text_path: Path,
-    back_text_path: Path,
+def interpret_transcription(
+    transcription: str,
     output_path: Path,
     system_prompt: str,
-    user_template: str,
     backend: LLMBackend,
     front_image_file: str | None = None,
     back_image_file: str | None = None,
 ) -> None:
-    """Interpret OCR text using an LLM backend and write structured JSON.
+    """Structure a vision-model transcription into JSON using the text LLM.
 
-    Sends the static system prompt and card-specific user message to the
-    backend with structured JSON output. Writes the parsed JSON to output_path.
-    Raises on failure (caller handles).
+    Sends the system prompt and transcription to the backend with
+    json_schema for constrained decoding. Writes the parsed JSON to
+    output_path. Raises on failure (caller handles).
     """
-    front_text = front_text_path.read_text() if front_text_path.exists() else ""
-    back_text = back_text_path.read_text() if back_text_path.exists() else ""
-
-    user_message = user_template.replace("{front_text}", front_text).replace(
-        "{back_text}", back_text
-    )
-
     response_text = backend.generate_text(
-        system_prompt, user_message,
+        system_prompt, transcription,
         temperature=0, max_tokens=2048,
         json_schema=PERSON_SCHEMA,
     )
@@ -67,8 +58,6 @@ def interpret_text(
     existing["person"] = result.get("person", {})
     existing["notes"] = result.get("notes", [])
     existing_source = existing.get("source", {})
-    existing_source["front_text_file"] = front_text_path.name
-    existing_source["back_text_file"] = back_text_path.name
     if front_image_file is not None:
         existing_source["front_image_file"] = front_image_file
     if back_image_file is not None:

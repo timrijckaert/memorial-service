@@ -9,7 +9,7 @@ from src.extraction.llm import LLMBackend
 
 from src.extraction.ocr import extract_text
 from src.extraction.date_verification import verify_dates
-from src.extraction.interpretation import interpret_text
+from src.extraction.interpretation import interpret_transcription
 
 
 @dataclass
