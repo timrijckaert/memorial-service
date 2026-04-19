@@ -144,13 +144,15 @@ class MLXBackend:
     ) -> str:
         self._ensure_vision_model()
 
+        if not images:
+            raise ValueError("generate_vision requires at least one image")
+
         image_paths = []
         try:
             for img in images:
-                f = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                img.save(f, format="PNG")
-                f.close()
-                image_paths.append(f.name)
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                    img.save(f, format="PNG")
+                    image_paths.append(f.name)
 
             formatted_prompt = mlx_vlm_apply_chat_template(
                 self._vision_processor,
