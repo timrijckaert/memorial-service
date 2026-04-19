@@ -1,16 +1,14 @@
 # src/web/worker.py
-"""Background extraction worker using async two-stage pipeline."""
+"""Background extraction worker using sequential vision+text pipeline."""
 
-import asyncio
 import dataclasses
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.extraction.ocr import extract_text
-from src.extraction.date_verification import verify_dates
-from src.extraction.interpretation import interpret_text
+from PIL import Image
+
+from src.extraction.interpretation import interpret_transcription
 from src.extraction.llm import LLMBackend
 
 
@@ -25,7 +23,7 @@ class CardError:
 class CardProgress:
     """Tracks a single in-flight card and its current stage."""
     card_id: str
-    stage: str  # "ocr" | "date_verify" | "llm_extract"
+    stage: str  # "vision_read" | "text_extract"
 
 
 @dataclass
@@ -41,31 +39,18 @@ class ExtractionStatus:
         return dataclasses.asdict(self)
 
 
-@dataclass
-class _OcrResult:
-    """Internal data passed from OCR stage to LLM stage."""
-    card_name: str
-    front_path: Path
-    back_path: Path | None
-    front_text_path: Path
-    back_text_path: Path | None
-
-
 class ExtractionWorker:
-    """Runs extraction via async two-stage pipeline on a background thread.
+    """Runs extraction via sequential vision+text pipeline on a background thread.
 
-    Stage 1 (OCR producer): launches all cards' OCR concurrently via
-    ThreadPoolExecutor. Front + back OCR run in parallel per card.
-
-    Stage 2 (LLM consumer): pulls OCR-completed cards from an asyncio.Queue
-    and runs date verification + interpretation one card at a time.
+    For each card:
+      1. Vision model reads front + back images → raw transcription
+      2. Text model structures transcription → JSON with constrained decoding
     """
 
     def __init__(self):
         self._lock = threading.Lock()
         self._status = ExtractionStatus(status="idle")
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._cancel: asyncio.Event | None = None
+        self._cancel = threading.Event()
 
     def get_status(self) -> ExtractionStatus:
         with self._lock:
@@ -86,11 +71,9 @@ class ExtractionWorker:
     def start(
         self,
         pairs: list[tuple[str, Path, Path | None]],
-        text_dir: Path,
         json_dir: Path,
-        conflicts_dir: Path,
         system_prompt: str | None,
-        user_template: str | None,
+        vision_prompt: str | None,
         backend: LLMBackend | None,
     ) -> bool:
         with self._lock:
@@ -101,10 +84,10 @@ class ExtractionWorker:
                 status="running", queue=queue_names,
             )
 
+        self._cancel.clear()
         thread = threading.Thread(
-            target=self._run_loop,
-            args=(pairs, text_dir, json_dir, conflicts_dir,
-                  system_prompt, user_template, backend),
+            target=self._run,
+            args=(pairs, json_dir, system_prompt, vision_prompt, backend),
             daemon=True,
         )
         thread.start()
@@ -114,188 +97,74 @@ class ExtractionWorker:
         with self._lock:
             if self._status.status == "running":
                 self._status.status = "cancelling"
-        if self._loop and self._cancel:
-            self._loop.call_soon_threadsafe(self._cancel.set)
+        self._cancel.set()
 
-    def _run_loop(self, pairs, text_dir, json_dir, conflicts_dir,
-                  system_prompt, user_template, backend):
-        loop = asyncio.new_event_loop()
-        self._loop = loop
-        self._cancel = None
-        try:
-            loop.run_until_complete(
-                self._run(pairs, text_dir, json_dir, conflicts_dir,
-                          system_prompt, user_template, backend)
-            )
-        finally:
-            loop.close()
-            self._loop = None
-            self._cancel = None
+    def _run(self, pairs, json_dir, system_prompt, vision_prompt, backend):
+        for card_id, front_path, back_path in pairs:
+            if self._cancel.is_set():
+                break
 
-    async def _run(self, pairs, text_dir, json_dir, conflicts_dir,
-                   system_prompt, user_template, backend):
-        self._cancel = asyncio.Event()
-        ocr_queue: asyncio.Queue[_OcrResult | None] = asyncio.Queue()
-        executor = ThreadPoolExecutor(max_workers=4)
+            with self._lock:
+                if card_id in self._status.queue:
+                    self._status.queue.remove(card_id)
 
-        try:
-            producer = asyncio.create_task(
-                self._ocr_producer(pairs, text_dir, ocr_queue, executor)
-            )
-            consumer = asyncio.create_task(
-                self._llm_consumer(
-                    ocr_queue, executor, json_dir, conflicts_dir,
-                    system_prompt, user_template, backend,
+            if not backend:
+                with self._lock:
+                    self._status.done.append(card_id)
+                continue
+
+            # Stage 1: Vision read
+            with self._lock:
+                self._status.in_flight = [CardProgress(card_id, "vision_read")]
+
+            try:
+                images = [Image.open(front_path)]
+                if back_path:
+                    images.append(Image.open(back_path))
+
+                transcription = backend.generate_vision(
+                    prompt=vision_prompt,
+                    images=images,
+                    temperature=0,
+                    max_tokens=2048,
                 )
-            )
-            await asyncio.gather(producer, consumer)
-        finally:
-            executor.shutdown(wait=False)
+            except Exception as e:
+                with self._lock:
+                    self._status.in_flight = []
+                    self._status.errors.append(
+                        CardError(card_id, f"vision read: {e}")
+                    )
+                continue
+
+            if self._cancel.is_set():
+                break
+
+            # Stage 2: Text structuring
+            with self._lock:
+                self._status.in_flight = [CardProgress(card_id, "text_extract")]
+
+            json_output_path = json_dir / f"{card_id}.json"
+            try:
+                interpret_transcription(
+                    transcription, json_output_path,
+                    system_prompt, backend,
+                    front_image_file=front_path.name,
+                    back_image_file=back_path.name if back_path else None,
+                )
+            except Exception as e:
+                with self._lock:
+                    self._status.in_flight = []
+                    self._status.errors.append(
+                        CardError(card_id, f"interpret: {e}")
+                    )
+                continue
+
+            with self._lock:
+                self._status.in_flight = []
+                self._status.done.append(card_id)
 
         with self._lock:
             if self._cancel.is_set():
                 self._status.status = "cancelled"
             else:
                 self._status.status = "idle"
-
-    def _remove_in_flight(self, card_name: str):
-        """Remove card from in_flight list. Caller must hold self._lock."""
-        self._status.in_flight = [
-            p for p in self._status.in_flight
-            if p.card_id != card_name
-        ]
-
-    async def _ocr_producer(self, pairs, text_dir, ocr_queue, executor):
-        loop = asyncio.get_running_loop()
-
-        async def ocr_one(card_id: str, front_path: Path, back_path: Path | None):
-            card_name = card_id
-            if self._cancel.is_set():
-                return
-
-            with self._lock:
-                if card_name in self._status.queue:
-                    self._status.queue.remove(card_name)
-                self._status.in_flight.append(
-                    CardProgress(card_name, "ocr")
-                )
-
-            front_text_path = text_dir / f"{card_id}_front.txt"
-            back_text_path = text_dir / f"{card_id}_back.txt" if back_path else None
-
-            try:
-                tasks = [
-                    loop.run_in_executor(
-                        executor, extract_text,
-                        front_path, front_text_path,
-                    ),
-                ]
-                if back_path and back_text_path:
-                    tasks.append(
-                        loop.run_in_executor(
-                            executor, extract_text,
-                            back_path, back_text_path,
-                        ),
-                    )
-                await asyncio.gather(*tasks)
-            except Exception as e:
-                with self._lock:
-                    self._remove_in_flight(card_name)
-                    self._status.errors.append(
-                        CardError(card_name, f"OCR: {e}")
-                    )
-                return
-
-            with self._lock:
-                for p in self._status.in_flight:
-                    if p.card_id == card_name:
-                        p.stage = "waiting"
-                        break
-
-            await ocr_queue.put(_OcrResult(
-                card_name=card_name,
-                front_path=front_path,
-                back_path=back_path,
-                front_text_path=front_text_path,
-                back_text_path=back_text_path,
-            ))
-
-        await asyncio.gather(*(ocr_one(cid, f, b) for cid, f, b in pairs))
-        await ocr_queue.put(None)  # sentinel
-
-    async def _llm_consumer(self, ocr_queue, executor, json_dir,
-                            conflicts_dir, system_prompt, user_template,
-                            backend):
-        loop = asyncio.get_running_loop()
-
-        while True:
-            item = await ocr_queue.get()
-            if item is None:
-                break
-
-            if self._cancel.is_set():
-                with self._lock:
-                    self._remove_in_flight(item.card_name)
-                continue
-
-            if not backend:
-                with self._lock:
-                    self._remove_in_flight(item.card_name)
-                    self._status.done.append(item.card_name)
-                continue
-
-            card_name = item.card_name
-
-            # Date verification
-            with self._lock:
-                for p in self._status.in_flight:
-                    if p.card_id == card_name:
-                        p.stage = "date_verify"
-                        break
-
-            try:
-                verify_items = [(item.front_text_path, item.front_path)]
-                if item.back_text_path and item.back_path:
-                    verify_items.append((item.back_text_path, item.back_path))
-                for txt_path, img_path in verify_items:
-                    await loop.run_in_executor(
-                        executor, verify_dates,
-                        img_path, txt_path, backend, conflicts_dir,
-                    )
-            except Exception as e:
-                with self._lock:
-                    self._remove_in_flight(card_name)
-                    self._status.errors.append(
-                        CardError(card_name, f"date verify: {e}")
-                    )
-                continue
-
-            # LLM interpretation
-            with self._lock:
-                for p in self._status.in_flight:
-                    if p.card_id == card_name:
-                        p.stage = "llm_extract"
-                        break
-
-            json_output_path = json_dir / f"{card_name}.json"
-            back_text = item.back_text_path if item.back_text_path else item.front_text_path
-            try:
-                await loop.run_in_executor(
-                    executor, interpret_text,
-                    item.front_text_path, back_text,
-                    json_output_path,
-                    system_prompt, user_template, backend,
-                    item.front_path.name,
-                    item.back_path.name if item.back_path else None,
-                )
-            except Exception as e:
-                with self._lock:
-                    self._remove_in_flight(card_name)
-                    self._status.errors.append(
-                        CardError(card_name, f"interpret: {e}")
-                    )
-                continue
-
-            with self._lock:
-                self._remove_in_flight(card_name)
-                self._status.done.append(card_name)
