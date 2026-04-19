@@ -38,5 +38,10 @@ def save_card(card_id: str, json_dir: Path, updated_data: dict) -> None:
             value = person.get(field)
             if value:
                 person[field] = value.title()
+        if isinstance(person.get("spouses"), list):
+            person["spouses"] = [
+                s.title() if isinstance(s, str) else s
+                for s in person["spouses"]
+            ]
     merged = {**updated_data, "source": original["source"]}
     json_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False))

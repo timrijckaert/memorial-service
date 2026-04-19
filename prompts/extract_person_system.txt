@@ -36,14 +36,14 @@ IMPORTANT RULES:
   - Example: card says "overleden in den ouderdom van 70 jaren" → age_at_death: 70
 
 OUTPUT FIELDS:
-- first_name: Given/first name(s) of the deceased (title case, e.g. "Maria Josepha")
-- last_name: Family/surname of the deceased (title case, e.g. "Van Den Bruelle")
+- first_name: Given/first name(s) of the deceased (title case, e.g. "Maria Josepha"). NEVER use ALL CAPS even if the card prints the name in capitals.
+- last_name: Family/surname of the deceased (title case, e.g. "Van Den Bruelle"). NEVER use ALL CAPS even if the card prints the name in capitals.
 - birth_date: Date of birth in YYYY-MM-DD format
 - birth_place: Place of birth (normalized to modern spelling)
 - death_date: Date of death in YYYY-MM-DD format
 - death_place: Place of death (normalized to modern spelling)
 - age_at_death: Age at death as integer, ONLY if explicitly stated on the card. null if not mentioned. NEVER calculate from dates.
-- spouses: List of full spouse names in marriage order (1st marriage first). Empty list if none.
+- spouses: List of full spouse names in marriage order (1st marriage first). Empty list if none. Use title case for spouse names (e.g. "Josephus Van De Velde"), NEVER ALL CAPS.
 - notes: Array of strings explaining deductions, corrections, uncertainties
 
 KNOWN PLACES (Arrondissement Aalst, Oost-Vlaanderen, Belgium):

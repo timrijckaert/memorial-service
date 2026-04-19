@@ -96,6 +96,32 @@ def test_save_card_title_cases_names(tmp_path):
     assert result["person"]["last_name"] == "Van Den Bruelle"
 
 
+def test_save_card_title_cases_uppercase_spouses(tmp_path):
+    original = {
+        "person": {"first_name": "old", "last_name": "old", "spouses": []},
+        "notes": [],
+        "source": {"front_text_file": "f.txt", "back_text_file": "b.txt"},
+    }
+    path = tmp_path / "card.json"
+    path.write_text(json.dumps(original))
+
+    updated = {
+        "person": {
+            "first_name": "MARIA",
+            "last_name": "MEGANCK",
+            "spouses": ["JOSEPHUS VAN DE VELDE", "PETRUS DE SMET"],
+        },
+        "notes": [],
+        "source": {},
+    }
+    save_card("card", tmp_path, updated)
+
+    result = json.loads(path.read_text())
+    assert result["person"]["first_name"] == "Maria"
+    assert result["person"]["last_name"] == "Meganck"
+    assert result["person"]["spouses"] == ["Josephus Van De Velde", "Petrus De Smet"]
+
+
 def test_save_card_title_case_handles_none_names(tmp_path):
     original = {
         "person": {"first_name": None, "last_name": None},

@@ -44,6 +44,16 @@ def interpret_text(
             f"LLM returned invalid JSON: {response_text[:200]}"
         ) from e
 
+    # Title-case names — LLM sometimes passes through ALL-CAPS from the card
+    person = result.get("person", {})
+    for field in ("first_name", "last_name"):
+        if isinstance(person.get(field), str):
+            person[field] = person[field].title()
+    if isinstance(person.get("spouses"), list):
+        person["spouses"] = [
+            s.title() if isinstance(s, str) else s for s in person["spouses"]
+        ]
+
     # Read existing file (skeleton from match phase) if present
     existing = {}
     if output_path.exists():
