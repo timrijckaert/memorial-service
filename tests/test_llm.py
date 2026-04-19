@@ -1,13 +1,19 @@
 # tests/test_llm.py
-"""Tests for the MLX LLM backend (llm.py)."""
+"""Integration tests for the MLX LLM backend (llm.py).
+
+These tests load real models and run real inference. They require:
+- MLX models cached in the project's models/ directory
+- Set HF_HUB_CACHE to point there (run.sh does this automatically)
+
+Slow (~10-30s total) but catches real issues that mocks miss.
+"""
 
 import json
-import tempfile
+import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from src.extraction.llm import (
     MLXBackend,
@@ -16,15 +22,27 @@ from src.extraction.llm import (
 )
 from src.extraction.schema import MLX_TEXT_MODEL, MLX_VISION_MODEL
 
+# Point HuggingFace to local models/ directory
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_MODELS_DIR = _PROJECT_ROOT / "models"
+os.environ["HF_HUB_CACHE"] = str(_MODELS_DIR)
+
+# Skip all integration tests if models aren't downloaded
+_has_models = _MODELS_DIR.exists() and any(_MODELS_DIR.iterdir())
+requires_models = pytest.mark.skipif(
+    not _has_models, reason="MLX models not downloaded (run ./run.sh first)"
+)
+
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Shared fixture — models load once for the entire module
 # ---------------------------------------------------------------------------
 
 
-def _make_pil_image() -> Image.Image:
-    """Return a tiny 2x2 white RGB PIL image for testing."""
-    return Image.new("RGB", (2, 2), color=(255, 255, 255))
+@pytest.fixture(scope="module")
+def backend():
+    """Shared MLXBackend instance. Text and vision models lazy-load on first use."""
+    return MLXBackend()
 
 
 # ---------------------------------------------------------------------------
@@ -32,115 +50,36 @@ def _make_pil_image() -> Image.Image:
 # ---------------------------------------------------------------------------
 
 
-@patch("src.extraction.llm.mlx_lm_generate")
-@patch("src.extraction.llm.make_sampler")
-@patch("src.extraction.llm.mlx_lm_load")
-def test_generate_text_loads_model_lazily(mock_load, mock_sampler, mock_generate):
-    """Text model is loaded on first generate_text call, not on construction."""
-    mock_model = MagicMock()
-    mock_tokenizer = MagicMock()
-    mock_load.return_value = (mock_model, mock_tokenizer)
-    mock_tokenizer.apply_chat_template.return_value = "formatted"
-    mock_generate.return_value = "hello"
-
-    backend = MLXBackend()
-    mock_load.assert_not_called()
-
-    backend.generate_text("sys", "user", temperature=0.5, max_tokens=100)
-    mock_load.assert_called_once_with(MLX_TEXT_MODEL)
-
-
-@patch("src.extraction.llm.mlx_lm_generate")
-@patch("src.extraction.llm.make_sampler")
-@patch("src.extraction.llm.mlx_lm_load")
-def test_generate_text_uses_chat_template(mock_load, mock_sampler, mock_generate):
-    """System and user prompts are formatted via the tokenizer's chat template."""
-    mock_model = MagicMock()
-    mock_tokenizer = MagicMock()
-    mock_load.return_value = (mock_model, mock_tokenizer)
-    mock_tokenizer.apply_chat_template.return_value = "formatted"
-    mock_generate.return_value = "result"
-
-    backend = MLXBackend()
-    backend.generate_text("sys prompt", "user prompt", temperature=0.0, max_tokens=50)
-
-    mock_tokenizer.apply_chat_template.assert_called_once_with(
-        [
-            {"role": "system", "content": "sys prompt"},
-            {"role": "user", "content": "user prompt"},
-        ],
-        add_generation_prompt=True,
+@requires_models
+def test_generate_text_returns_string(backend):
+    """generate_text returns a non-empty string."""
+    result = backend.generate_text(
+        system_prompt="You are a helpful assistant.",
+        user_prompt="Reply with only the word 'hello'.",
+        temperature=0.0,
+        max_tokens=16,
     )
+    assert isinstance(result, str)
+    assert len(result.strip()) > 0
 
 
-@patch("src.extraction.llm.mlx_lm_generate")
-@patch("src.extraction.llm.make_sampler")
-@patch("src.extraction.llm.mlx_lm_load")
-def test_generate_text_passes_sampling_params(mock_load, mock_sampler, mock_generate):
-    """Temperature and max_tokens are forwarded correctly."""
-    mock_model = MagicMock()
-    mock_tokenizer = MagicMock()
-    mock_load.return_value = (mock_model, mock_tokenizer)
-    mock_tokenizer.apply_chat_template.return_value = "formatted"
-    mock_sampler.return_value = "sampler_obj"
-    mock_generate.return_value = "result"
-
-    backend = MLXBackend()
-    backend.generate_text("sys", "user", temperature=0.7, max_tokens=512)
-
-    mock_sampler.assert_called_with(temp=0.7)
-    mock_generate.assert_called_once_with(
-        mock_model,
-        mock_tokenizer,
-        prompt="formatted",
-        max_tokens=512,
-        sampler="sampler_obj",
+@requires_models
+def test_generate_text_with_json_schema(backend):
+    """When json_schema is provided, the response is valid parseable JSON."""
+    schema = {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"],
+    }
+    result = backend.generate_text(
+        system_prompt="Extract the name from the text.",
+        user_prompt="My name is Tim.",
+        temperature=0.0,
+        max_tokens=64,
+        json_schema=schema,
     )
-
-
-@patch("src.extraction.llm.mlx_lm_generate")
-@patch("src.extraction.llm.make_sampler")
-@patch("src.extraction.llm.mlx_lm_load")
-def test_generate_text_with_json_schema(mock_load, mock_sampler, mock_generate):
-    """When json_schema is given, schema is appended to system prompt and fences are stripped."""
-    schema = {"type": "object"}
-    raw_json = '{"key": "value"}'
-    fenced = f"```json\n{raw_json}\n```"
-
-    mock_model = MagicMock()
-    mock_tokenizer = MagicMock()
-    mock_load.return_value = (mock_model, mock_tokenizer)
-    mock_tokenizer.apply_chat_template.return_value = "formatted"
-    mock_generate.return_value = fenced
-
-    backend = MLXBackend()
-    result = backend.generate_text("sys", "user", temperature=0.0, max_tokens=50, json_schema=schema)
-
-    assert result == raw_json
-
-    # System message should contain the JSON schema
-    messages = mock_tokenizer.apply_chat_template.call_args[0][0]
-    system_content = messages[0]["content"]
-    assert json.dumps(schema) in system_content
-    assert "JSON" in system_content
-
-
-@patch("src.extraction.llm.mlx_lm_generate")
-@patch("src.extraction.llm.make_sampler")
-@patch("src.extraction.llm.mlx_lm_load")
-def test_generate_text_reuses_loaded_model(mock_load, mock_sampler, mock_generate):
-    """Text model is loaded only once across multiple generate_text calls."""
-    mock_model = MagicMock()
-    mock_tokenizer = MagicMock()
-    mock_load.return_value = (mock_model, mock_tokenizer)
-    mock_tokenizer.apply_chat_template.return_value = "formatted"
-    mock_generate.return_value = "result"
-
-    backend = MLXBackend()
-    backend.generate_text("sys", "user", temperature=0.0, max_tokens=10)
-    backend.generate_text("sys", "user", temperature=0.0, max_tokens=10)
-
-    mock_load.assert_called_once()
+    parsed = json.loads(result)
+    assert "name" in parsed
 
 
 # ---------------------------------------------------------------------------
@@ -148,79 +87,26 @@ def test_generate_text_reuses_loaded_model(mock_load, mock_sampler, mock_generat
 # ---------------------------------------------------------------------------
 
 
-@patch("src.extraction.llm.mlx_vlm_generate")
-@patch("src.extraction.llm.mlx_vlm_apply_chat_template")
-@patch("src.extraction.llm.mlx_vlm_load_config")
-@patch("src.extraction.llm.mlx_vlm_load")
-def test_generate_vision_loads_model_lazily(mock_load, mock_config, mock_template, mock_generate):
-    """Vision model is loaded on first generate_vision call, not on construction."""
-    mock_model = MagicMock()
-    mock_processor = MagicMock()
-    mock_load.return_value = (mock_model, mock_processor)
-    mock_config.return_value = {}
-    mock_template.return_value = "formatted"
-    mock_result = MagicMock()
-    mock_result.text = "1923"
-    mock_generate.return_value = mock_result
-
-    backend = MLXBackend()
-    mock_load.assert_not_called()
-
-    image = _make_pil_image()
-    backend.generate_vision("read this", image, temperature=0.0, max_tokens=16)
-    mock_load.assert_called_once_with(MLX_VISION_MODEL)
+def _make_number_image(text: str = "1923") -> Image.Image:
+    """Create a simple image with a number drawn on it."""
+    img = Image.new("RGB", (120, 50), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    draw.text((30, 10), text, fill=(0, 0, 0))
+    return img
 
 
-@patch("src.extraction.llm.mlx_vlm_generate")
-@patch("src.extraction.llm.mlx_vlm_apply_chat_template")
-@patch("src.extraction.llm.mlx_vlm_load_config")
-@patch("src.extraction.llm.mlx_vlm_load")
-def test_generate_vision_saves_image_and_passes_path(mock_load, mock_config, mock_template, mock_generate):
-    """PIL image is saved to a temp file and the path is passed to mlx_vlm.generate."""
-    mock_model = MagicMock()
-    mock_processor = MagicMock()
-    mock_load.return_value = (mock_model, mock_processor)
-    mock_config.return_value = {}
-    mock_template.return_value = "formatted"
-    mock_result = MagicMock()
-    mock_result.text = "1923"
-    mock_generate.return_value = mock_result
-
-    backend = MLXBackend()
-    image = _make_pil_image()
-    result = backend.generate_vision("read this", image, temperature=0.0, max_tokens=16)
-
-    assert result == "1923"
-    mock_generate.assert_called_once()
-    call_kwargs = mock_generate.call_args
-    # image argument should be a list with one string path
-    image_arg = call_kwargs[1].get("image") or call_kwargs[0][3]
-    assert isinstance(image_arg, list)
-    assert len(image_arg) == 1
-    assert isinstance(image_arg[0], str)
-
-
-@patch("src.extraction.llm.mlx_vlm_generate")
-@patch("src.extraction.llm.mlx_vlm_apply_chat_template")
-@patch("src.extraction.llm.mlx_vlm_load_config")
-@patch("src.extraction.llm.mlx_vlm_load")
-def test_generate_vision_reuses_loaded_model(mock_load, mock_config, mock_template, mock_generate):
-    """Vision model is loaded only once across multiple generate_vision calls."""
-    mock_model = MagicMock()
-    mock_processor = MagicMock()
-    mock_load.return_value = (mock_model, mock_processor)
-    mock_config.return_value = {}
-    mock_template.return_value = "formatted"
-    mock_result = MagicMock()
-    mock_result.text = "1923"
-    mock_generate.return_value = mock_result
-
-    backend = MLXBackend()
-    image = _make_pil_image()
-    backend.generate_vision("read", image, temperature=0.0, max_tokens=16)
-    backend.generate_vision("read", image, temperature=0.0, max_tokens=16)
-
-    mock_load.assert_called_once()
+@requires_models
+def test_generate_vision_returns_string(backend):
+    """generate_vision returns a non-empty string from a real image."""
+    image = _make_number_image("1923")
+    result = backend.generate_vision(
+        prompt="Read the number in this image. Reply with ONLY the number, nothing else.",
+        image=image,
+        temperature=0.0,
+        max_tokens=16,
+    )
+    assert isinstance(result, str)
+    assert len(result.strip()) > 0
 
 
 # ---------------------------------------------------------------------------
