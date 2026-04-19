@@ -1,10 +1,10 @@
 # src/extraction/schema.py
 """Shared constants and JSON schema for the extraction pipeline."""
 
-__all__ = ["PERSON_SCHEMA", "GEMINI_MODEL", "OLLAMA_MODEL"]
+__all__ = ["PERSON_SCHEMA", "MLX_TEXT_MODEL", "MLX_VISION_MODEL"]
 
-GEMINI_MODEL = "gemini-2.5-flash"
-OLLAMA_MODEL = "gemma3:4b"
+MLX_TEXT_MODEL = "mlx-community/gemma-3-4b-it-4bit"
+MLX_VISION_MODEL = "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"
 
 PERSON_SCHEMA = {
     "type": "object",

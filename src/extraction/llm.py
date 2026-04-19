@@ -19,7 +19,7 @@ from google.genai import types
 from google.genai.errors import ClientError
 from ollama import chat
 
-from src.extraction.schema import GEMINI_MODEL, OLLAMA_MODEL
+from src.extraction.schema import MLX_TEXT_MODEL, MLX_VISION_MODEL
 
 __all__ = ["LLMBackend", "OllamaBackend", "GeminiBackend", "make_backend"]
 
@@ -69,7 +69,7 @@ class LLMBackend(Protocol):
 class OllamaBackend:
     """LLM backend that talks to a local Ollama server."""
 
-    def __init__(self, model: str = OLLAMA_MODEL) -> None:
+    def __init__(self, model: str = MLX_TEXT_MODEL) -> None:
         self._model = model
 
     def generate_text(
@@ -128,7 +128,7 @@ class OllamaBackend:
 class GeminiBackend:
     """LLM backend that uses the Google Gemini API."""
 
-    def __init__(self, client: genai.Client, model: str = GEMINI_MODEL) -> None:
+    def __init__(self, client: genai.Client, model: str = MLX_TEXT_MODEL) -> None:
         self._client = client
         self._model = model
 
@@ -196,7 +196,7 @@ def make_backend(config_path: Path) -> LLMBackend:
     if backend_type == "gemini":
         client = genai.Client(api_key=config["gemini_api_key"])
         return GeminiBackend(client=client)
-    model = config.get("ollama_model", OLLAMA_MODEL)
+    model = config.get("ollama_model", MLX_TEXT_MODEL)
     return OllamaBackend(model=model)
 
 
