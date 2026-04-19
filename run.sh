@@ -28,14 +28,6 @@ if [ ! -f "$TESSDATA_DIR/nld.traineddata" ]; then
     echo ""
 fi
 
-# Check config.json exists
-if [ ! -f "$SCRIPT_DIR/config.json" ]; then
-    echo "Error: config.json not found."
-    echo "Create it with your Gemini API key:"
-    echo '  {"gemini_api_key": "your-api-key-here"}'
-    exit 1
-fi
-
 # Create venv if it doesn't exist
 if [ ! -d "$VENV_DIR" ]; then
     echo "Setting up virtual environment..."
@@ -44,6 +36,20 @@ if [ ! -d "$VENV_DIR" ]; then
     echo "Setup complete."
     echo ""
 fi
+
+# Pre-download MLX models if not cached
+echo "Checking MLX models..."
+"$VENV_DIR/bin/python" -c "
+from mlx_lm import load as lm_load
+from mlx_vlm import load as vlm_load
+print('  Checking text model...')
+lm_load('mlx-community/gemma-3-4b-it-4bit')
+print('  Text model ready.')
+print('  Checking vision model...')
+vlm_load('mlx-community/Qwen2.5-VL-3B-Instruct-4bit')
+print('  Vision model ready.')
+"
+echo ""
 
 # Run the pipeline
 "$VENV_DIR/bin/python" "$SCRIPT_DIR/src/main.py" "$@"
