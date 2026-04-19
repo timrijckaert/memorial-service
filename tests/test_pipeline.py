@@ -34,7 +34,7 @@ def test_extract_one_calls_vision_then_text(mock_interpret, tmp_path):
     )
 
     assert steps == ["vision_read", "text_extract"]
-    assert mock_backend.generate_vision.call_count == 1
+    assert mock_backend.generate_vision.call_count == 2  # one per side
     assert mock_interpret.call_count == 1
     assert result.interpreted is True
     assert result.errors == []
@@ -42,7 +42,7 @@ def test_extract_one_calls_vision_then_text(mock_interpret, tmp_path):
 
 @patch("src.extraction.pipeline.interpret_transcription")
 def test_extract_one_sends_both_images(mock_interpret, tmp_path):
-    """Vision model receives both front and back images."""
+    """Vision model is called once per side (separate calls for front and back)."""
     front = _make_test_image(tmp_path / "card.jpeg")
     back = _make_test_image(tmp_path / "card 1.jpeg")
     json_dir = tmp_path / "json"
@@ -52,9 +52,11 @@ def test_extract_one_sends_both_images(mock_interpret, tmp_path):
 
     extract_one(front, back, json_dir, mock_backend, "sys", "vis")
 
-    call_args = mock_backend.generate_vision.call_args
-    images = call_args.kwargs.get("images") or call_args.args[1]
-    assert len(images) == 2
+    assert mock_backend.generate_vision.call_count == 2
+    # Each call sends exactly one image
+    for call in mock_backend.generate_vision.call_args_list:
+        images = call.kwargs.get("images") or call.args[1]
+        assert len(images) == 1
 
 
 @patch("src.extraction.pipeline.interpret_transcription")

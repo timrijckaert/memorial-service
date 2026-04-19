@@ -70,7 +70,7 @@ def test_worker_processes_card(mock_interpret, tmp_path):
 
     assert status.status == "idle"
     assert "test-uuid-001" in status.done
-    assert backend.generate_vision.call_count == 1
+    assert backend.generate_vision.call_count == 2  # one per side
     assert mock_interpret.call_count == 1
 
 
@@ -209,5 +209,5 @@ def test_worker_processes_multiple_cards(mock_interpret, tmp_path):
 
     assert status.status == "idle"
     assert sorted(status.done) == sorted(["multi-Card A", "multi-Card B", "multi-Card C"])
-    assert backend.generate_vision.call_count == 3
+    assert backend.generate_vision.call_count == 6  # 2 per card (front + back)
     assert mock_interpret.call_count == 3
