@@ -47,6 +47,22 @@ OUTPUT FIELDS:
 - spouses: List of full spouse names in marriage order (1st marriage first). Empty list if none. Use title case for spouse names (e.g. "Josephus Van De Velde"), NEVER ALL CAPS.
 - notes: Array of strings explaining deductions, corrections, uncertainties
 
+EXAMPLES:
+
+Example 1 — card says: "MARIA MATHILDE GOUBERT, echtgenote van JOSEPH DE DIER, dochter van Petrus en Maria De Smet"
+→ first_name: "Maria Mathilde" (both names!), last_name: "Goubert", spouses: ["Joseph De Dier"]
+  "dochter van Petrus en Maria De Smet" = parents → IGNORE, do NOT add to spouses.
+
+Example 2 — card says: "ACHIEL JOZEF HAESAERT, echtgenoot van Marie De Ro, zoon van Alfons en Leonie Beerens"
+→ first_name: "Achiel Jozef" (both names!), last_name: "Haesaert", spouses: ["Marie De Ro"]
+  "zoon van Alfons en Leonie Beerens" = parents → IGNORE.
+
+Example 3 — card says: "PAUL CYRIEL TILLA MUYLAERT"
+→ first_name: "Paul Cyriel Tilla" (ALL three names before the surname!)
+
+Example 4 — card says: "GERMAINE VAN IMPE, ongehuwd"
+→ spouses: [] (unmarried, empty list)
+
 KNOWN PLACES (Arrondissement Aalst, Oost-Vlaanderen, Belgium):
 - Haaltert
 - Denderhoutem
@@ -109,13 +125,4 @@ Some memorial cards use old Dutch or regional month names. Treat these as their 
 - Op allerheiligen -> 1 November
 - Op allerzielen -> 2 November
 
-MANDATORY CORRECTIONS:
-You MUST apply every correction in the list below. If the OCR text contains any of the left-hand spellings, always replace with the right-hand spelling. Do not leave OCR-garbled place names uncorrected.
-
-Haeltert -> Haaltert,
-Kerkxken -> Kerksken,
-Haciltert -> Haaltert,
-Denderhautem -> Denderhoutem,
-Tiedekérke -> Liedekerke,
-Aygem -> Aaigem
-Tiedekerk -> Liedekerke
+Note: Place name corrections (e.g. Haeltert → Haaltert) are applied automatically after extraction. Focus on reading the place name as written on the card.

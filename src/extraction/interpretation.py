@@ -2,11 +2,48 @@
 """LLM-based structuring of vision transcriptions into biographical data."""
 
 import json
+import re
 from pathlib import Path
 
 from src.extraction.llm import LLMBackend
 from src.extraction.schema import PERSON_SCHEMA
 from src.locality import derive_locality
+
+# Place name corrections applied in code — the LLM doesn't reliably apply
+# these from the prompt, so we enforce them here.
+_PLACE_CORRECTIONS = {
+    "haeltert": "Haaltert",
+    "haciltert": "Haaltert",
+    "kerkxken": "Kerksken",
+    "denderhautem": "Denderhoutem",
+    "tiedekérke": "Liedekerke",
+    "tiedekerk": "Liedekerke",
+    "aygem": "Aaigem",
+}
+
+
+def _correct_place(place: str) -> str:
+    """Apply mandatory place name corrections."""
+    key = place.strip().lower()
+    return _PLACE_CORRECTIONS.get(key, place)
+
+
+def _remove_self_from_spouses(person: dict) -> None:
+    """Remove entries from spouses that match the deceased's own name."""
+    first = (person.get("first_name") or "").lower().split()
+    last = (person.get("last_name") or "").lower().split()
+    if not first or not last:
+        return
+
+    cleaned = []
+    for spouse in person.get("spouses", []):
+        spouse_lower = spouse.lower()
+        # Check if spouse entry contains both first and last name of deceased
+        has_first = any(f in spouse_lower for f in first)
+        has_last = all(l in spouse_lower for l in last)
+        if not (has_first and has_last):
+            cleaned.append(spouse)
+    person["spouses"] = cleaned
 
 
 def interpret_transcription(
@@ -45,6 +82,14 @@ def interpret_transcription(
         person["spouses"] = [
             s.title() if isinstance(s, str) else s for s in person["spouses"]
         ]
+
+    # Correct OCR-garbled place names
+    for field in ("birth_place", "death_place"):
+        if isinstance(person.get(field), str):
+            person[field] = _correct_place(person[field])
+
+    # Remove the deceased's own name from the spouses list
+    _remove_self_from_spouses(person)
 
     # Derive locality for filename
     person["locality"] = derive_locality(result)
