@@ -348,8 +348,24 @@ def generate_data_model(src_dir: Path) -> str:
         lines.append(schema_json)
         lines.append("```\n")
 
+    # Derived fields (computed post-extraction, not in LLM schema)
+    lines.append("## Derived Fields\n")
+    lines.append(
+        "Fields computed post-extraction and persisted in the card JSON, "
+        "but not part of the LLM output schema:\n"
+    )
+    lines.append("| Field | Type | Description |")
+    lines.append("|-------|------|-------------|")
+    lines.append(
+        "| `person.locality` | `string` (non-nullable) | "
+        "One of: Haaltert, Kerksken, Denderhoutem, Terjoden. "
+        "Derived from `death_place` (preferred) or `birth_place` via "
+        "case-insensitive substring matching, defaulting to \"Haaltert\". "
+        "Editable in the Review UI. |"
+    )
+
     # Directory layout
-    lines.append("## Directory Layout\n")
+    lines.append("\n## Directory Layout\n")
     dirs = [
         ("input/", "Scanned memorial card images (front + back pairs)"),
         ("output/json/", "Per-card JSON files (UUID-keyed, one per confirmed pair)"),
