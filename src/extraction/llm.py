@@ -1,29 +1,26 @@
 # src/extraction/llm.py
 """LLM backend abstraction for the extraction pipeline.
 
-Provides a Protocol (LLMBackend) with two concrete implementations:
-  - OllamaBackend  — uses the local ollama server
-  - GeminiBackend  — uses the Google Gemini API with 429-retry logic
+Provides a Protocol (LLMBackend) and a single concrete implementation:
+  - MLXBackend — runs models in-process via Apple's MLX framework
 
-Use make_backend(config_path) to obtain the correct backend at runtime.
+Use make_backend(config_path) to obtain the backend at runtime.
 """
 
-import io
 import json
-import time
+import tempfile
 from pathlib import Path
 from typing import Optional, Protocol
 
-from google import genai
-from google.genai import types
-from google.genai.errors import ClientError
-from ollama import chat
+from mlx_lm import load as mlx_lm_load, generate as mlx_lm_generate
+from mlx_lm.sample_utils import make_sampler
+from mlx_vlm import load as mlx_vlm_load, generate as mlx_vlm_generate
+from mlx_vlm.prompt_utils import apply_chat_template as mlx_vlm_apply_chat_template
+from mlx_vlm.utils import load_config as mlx_vlm_load_config
 
 from src.extraction.schema import MLX_TEXT_MODEL, MLX_VISION_MODEL
 
-__all__ = ["LLMBackend", "OllamaBackend", "GeminiBackend", "make_backend"]
-
-_MAX_RETRIES = 3
+__all__ = ["LLMBackend", "MLXBackend", "make_backend"]
 
 _JSON_INSTRUCTION = (
     "\n\nRespond with ONLY valid JSON matching this schema. "
@@ -62,15 +59,45 @@ class LLMBackend(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# OllamaBackend
+# MLXBackend
 # ---------------------------------------------------------------------------
 
 
-class OllamaBackend:
-    """LLM backend that talks to a local Ollama server."""
+class MLXBackend:
+    """LLM backend that runs models in-process via Apple's MLX framework.
 
-    def __init__(self, model: str = MLX_TEXT_MODEL) -> None:
-        self._model = model
+    Uses two separate models:
+      - mlx-lm for text generation (generate_text)
+      - mlx-vlm for vision tasks (generate_vision)
+
+    Both models are lazy-loaded on first use.
+    """
+
+    def __init__(
+        self,
+        text_model: str = MLX_TEXT_MODEL,
+        vision_model: str = MLX_VISION_MODEL,
+    ) -> None:
+        self._text_model_name = text_model
+        self._vision_model_name = vision_model
+        self._text_model = None
+        self._text_tokenizer = None
+        self._vision_model = None
+        self._vision_processor = None
+        self._vision_config = None
+
+    def _ensure_text_model(self):
+        """Load the text model if not already loaded."""
+        if self._text_model is None:
+            print(f"    Loading text model {self._text_model_name}...")
+            self._text_model, self._text_tokenizer = mlx_lm_load(self._text_model_name)
+
+    def _ensure_vision_model(self):
+        """Load the vision model if not already loaded."""
+        if self._vision_model is None:
+            print(f"    Loading vision model {self._vision_model_name}...")
+            self._vision_model, self._vision_processor = mlx_vlm_load(self._vision_model_name)
+            self._vision_config = mlx_vlm_load_config(self._vision_model_name)
 
     def generate_text(
         self,
@@ -80,19 +107,29 @@ class OllamaBackend:
         max_tokens: int,
         json_schema: Optional[dict] = None,
     ) -> str:
+        self._ensure_text_model()
+
         sys = system_prompt
         if json_schema is not None:
             sys = sys + _JSON_INSTRUCTION + json.dumps(json_schema)
 
-        response = chat(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": sys},
-                {"role": "user", "content": user_prompt},
-            ],
-            options={"temperature": temperature, "num_predict": max_tokens},
+        messages = [
+            {"role": "system", "content": sys},
+            {"role": "user", "content": user_prompt},
+        ]
+        prompt = self._text_tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True,
         )
-        text = response.message.content
+
+        sampler = make_sampler(temp=temperature)
+        text = mlx_lm_generate(
+            self._text_model,
+            self._text_tokenizer,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            sampler=sampler,
+        )
+
         if json_schema is not None:
             text = _strip_code_fences(text)
         return text
@@ -104,79 +141,28 @@ class OllamaBackend:
         temperature: float,
         max_tokens: int,
     ) -> str:
-        buf = io.BytesIO()
-        image.save(buf, format="PNG")
-        response = chat(
-            model=self._model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                    "images": [buf.getvalue()],
-                }
-            ],
-            options={"temperature": temperature, "num_predict": max_tokens},
+        self._ensure_vision_model()
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            image.save(f, format="PNG")
+            image_path = f.name
+
+        formatted_prompt = mlx_vlm_apply_chat_template(
+            self._vision_processor,
+            self._vision_config,
+            prompt,
+            num_images=1,
         )
-        return response.message.content
 
-
-# ---------------------------------------------------------------------------
-# GeminiBackend
-# ---------------------------------------------------------------------------
-
-
-class GeminiBackend:
-    """LLM backend that uses the Google Gemini API."""
-
-    def __init__(self, client: genai.Client, model: str = MLX_TEXT_MODEL) -> None:
-        self._client = client
-        self._model = model
-
-    def generate_text(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float,
-        max_tokens: int,
-        json_schema: Optional[dict] = None,
-    ) -> str:
-        config_kwargs = {
-            "system_instruction": system_prompt,
-            "temperature": temperature,
-            "max_output_tokens": max_tokens,
-        }
-        if json_schema is not None:
-            config_kwargs["response_mime_type"] = "application/json"
-            config_kwargs["response_json_schema"] = json_schema
-        config = types.GenerateContentConfig(**config_kwargs)
-        response = self._call(model=self._model, contents=user_prompt, config=config)
-        return response.text
-
-    def generate_vision(
-        self,
-        prompt: str,
-        image,
-        temperature: float,
-        max_tokens: int,
-    ) -> str:
-        config = types.GenerateContentConfig(
+        result = mlx_vlm_generate(
+            self._vision_model,
+            self._vision_processor,
+            formatted_prompt,
+            image=[image_path],
             temperature=temperature,
-            max_output_tokens=max_tokens,
+            max_tokens=max_tokens,
         )
-        response = self._call(model=self._model, contents=[prompt, image], config=config)
-        return response.text
-
-    def _call(self, **kwargs):
-        """Call Gemini with automatic retry on 429 rate-limit errors."""
-        for attempt in range(_MAX_RETRIES):
-            try:
-                return self._client.models.generate_content(**kwargs)
-            except ClientError as e:
-                if e.code == 429 and attempt < _MAX_RETRIES - 1:
-                    print(f"        Rate limited, waiting 60s...")
-                    time.sleep(60)
-                else:
-                    raise
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -185,19 +171,17 @@ class GeminiBackend:
 
 
 def make_backend(config_path: Path) -> LLMBackend:
-    """Create the appropriate LLM backend from a config file.
+    """Create an MLXBackend, optionally with model overrides from config.
 
-    If config_path does not exist, returns OllamaBackend with the default model.
+    If config_path does not exist, returns MLXBackend with default models.
     """
     if not config_path.exists():
-        return OllamaBackend()
+        return MLXBackend()
     config = json.loads(config_path.read_text())
-    backend_type = config.get("backend", "ollama")
-    if backend_type == "gemini":
-        client = genai.Client(api_key=config["gemini_api_key"])
-        return GeminiBackend(client=client)
-    model = config.get("ollama_model", MLX_TEXT_MODEL)
-    return OllamaBackend(model=model)
+    return MLXBackend(
+        text_model=config.get("mlx_text_model", MLX_TEXT_MODEL),
+        vision_model=config.get("mlx_vision_model", MLX_VISION_MODEL),
+    )
 
 
 # ---------------------------------------------------------------------------
