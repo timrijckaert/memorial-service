@@ -358,7 +358,7 @@ def generate_data_model(src_dir: Path) -> str:
     lines.append("|-------|------|-------------|")
     lines.append(
         "| `person.locality` | `string` (non-nullable) | "
-        "One of: Haaltert, Kerksken, Denderhoutem, Terjoden. "
+        "One of: Haaltert, Kerksken, Denderhoutem, Terjoden, Heldergem. "
         "Derived from `death_place` (preferred) or `birth_place` via "
         "case-insensitive substring matching, defaulting to \"Haaltert\". "
         "Editable in the Review UI. |"

@@ -706,7 +706,7 @@ async function approveCard() {
 }
 
 function deriveLocality() {
-  var knownLocalities = ['Haaltert', 'Kerksken', 'Denderhoutem', 'Terjoden'];
+  var knownLocalities = ['Haaltert', 'Kerksken', 'Denderhoutem', 'Terjoden', 'Heldergem'];
   var deathPlace = document.getElementById('f-death_place').value.trim().toLowerCase();
   var birthPlace = document.getElementById('f-birth_place').value.trim().toLowerCase();
 

@@ -1,7 +1,7 @@
 # src/locality.py
 """Resolve locality from card data for filename derivation."""
 
-KNOWN_LOCALITIES = ["Haaltert", "Kerksken", "Denderhoutem", "Terjoden"]
+KNOWN_LOCALITIES = ["Haaltert", "Kerksken", "Denderhoutem", "Terjoden", "Heldergem"]
 DEFAULT_LOCALITY = "Haaltert"
 
 
