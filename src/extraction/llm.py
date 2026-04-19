@@ -8,6 +8,7 @@ Use make_backend(config_path) to obtain the backend at runtime.
 """
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Optional, Protocol
@@ -147,22 +148,25 @@ class MLXBackend:
             image.save(f, format="PNG")
             image_path = f.name
 
-        formatted_prompt = mlx_vlm_apply_chat_template(
-            self._vision_processor,
-            self._vision_config,
-            prompt,
-            num_images=1,
-        )
+        try:
+            formatted_prompt = mlx_vlm_apply_chat_template(
+                self._vision_processor,
+                self._vision_config,
+                prompt,
+                num_images=1,
+            )
 
-        result = mlx_vlm_generate(
-            self._vision_model,
-            self._vision_processor,
-            formatted_prompt,
-            image=[image_path],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return result
+            result = mlx_vlm_generate(
+                self._vision_model,
+                self._vision_processor,
+                formatted_prompt,
+                image=[image_path],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return result
+        finally:
+            os.unlink(image_path)
 
 
 # ---------------------------------------------------------------------------
