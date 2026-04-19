@@ -1,21 +1,20 @@
 # tests/test_llm.py
-"""Tests for the LLM backend abstraction (llm.py)."""
+"""Tests for the MLX LLM backend (llm.py)."""
 
-import io
 import json
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 import pytest
 from PIL import Image
 
 from src.extraction.llm import (
-    GeminiBackend,
-    OllamaBackend,
+    MLXBackend,
     _strip_code_fences,
     make_backend,
 )
-from src.extraction.schema import GEMINI_MODEL, OLLAMA_MODEL
+from src.extraction.schema import MLX_TEXT_MODEL, MLX_VISION_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -24,230 +23,198 @@ from src.extraction.schema import GEMINI_MODEL, OLLAMA_MODEL
 
 
 def _make_pil_image() -> Image.Image:
-    """Return a tiny 2×2 white RGB PIL image for testing."""
+    """Return a tiny 2x2 white RGB PIL image for testing."""
     return Image.new("RGB", (2, 2), color=(255, 255, 255))
 
 
-def _make_ollama_response(content: str):
-    """Build a minimal mock that looks like an ollama ChatResponse."""
-    msg = MagicMock()
-    msg.content = content
-    resp = MagicMock()
-    resp.message = msg
-    return resp
-
-
 # ---------------------------------------------------------------------------
-# OllamaBackend — generate_text
+# MLXBackend — generate_text
 # ---------------------------------------------------------------------------
 
 
-def test_ollama_generate_text():
-    """chat() is called with the correct model, messages, and options."""
-    with patch("src.extraction.llm.chat") as mock_chat:
-        mock_chat.return_value = _make_ollama_response("hello")
-        backend = OllamaBackend()
-        result = backend.generate_text(
-            system_prompt="sys",
-            user_prompt="user",
-            temperature=0.5,
-            max_tokens=100,
-        )
+@patch("src.extraction.llm.mlx_lm_generate")
+@patch("src.extraction.llm.make_sampler")
+@patch("src.extraction.llm.mlx_lm_load")
+def test_generate_text_loads_model_lazily(mock_load, mock_sampler, mock_generate):
+    """Text model is loaded on first generate_text call, not on construction."""
+    mock_model = MagicMock()
+    mock_tokenizer = MagicMock()
+    mock_load.return_value = (mock_model, mock_tokenizer)
+    mock_tokenizer.apply_chat_template.return_value = "formatted"
+    mock_generate.return_value = "hello"
 
-    assert result == "hello"
-    mock_chat.assert_called_once_with(
-        model=OLLAMA_MODEL,
-        messages=[
-            {"role": "system", "content": "sys"},
-            {"role": "user", "content": "user"},
+    backend = MLXBackend()
+    mock_load.assert_not_called()
+
+    backend.generate_text("sys", "user", temperature=0.5, max_tokens=100)
+    mock_load.assert_called_once_with(MLX_TEXT_MODEL)
+
+
+@patch("src.extraction.llm.mlx_lm_generate")
+@patch("src.extraction.llm.make_sampler")
+@patch("src.extraction.llm.mlx_lm_load")
+def test_generate_text_uses_chat_template(mock_load, mock_sampler, mock_generate):
+    """System and user prompts are formatted via the tokenizer's chat template."""
+    mock_model = MagicMock()
+    mock_tokenizer = MagicMock()
+    mock_load.return_value = (mock_model, mock_tokenizer)
+    mock_tokenizer.apply_chat_template.return_value = "formatted"
+    mock_generate.return_value = "result"
+
+    backend = MLXBackend()
+    backend.generate_text("sys prompt", "user prompt", temperature=0.0, max_tokens=50)
+
+    mock_tokenizer.apply_chat_template.assert_called_once_with(
+        [
+            {"role": "system", "content": "sys prompt"},
+            {"role": "user", "content": "user prompt"},
         ],
-        options={"temperature": 0.5, "num_predict": 100},
+        add_generation_prompt=True,
     )
 
 
-def test_ollama_generate_text_with_json_schema():
+@patch("src.extraction.llm.mlx_lm_generate")
+@patch("src.extraction.llm.make_sampler")
+@patch("src.extraction.llm.mlx_lm_load")
+def test_generate_text_passes_sampling_params(mock_load, mock_sampler, mock_generate):
+    """Temperature and max_tokens are forwarded correctly."""
+    mock_model = MagicMock()
+    mock_tokenizer = MagicMock()
+    mock_load.return_value = (mock_model, mock_tokenizer)
+    mock_tokenizer.apply_chat_template.return_value = "formatted"
+    mock_sampler.return_value = "sampler_obj"
+    mock_generate.return_value = "result"
+
+    backend = MLXBackend()
+    backend.generate_text("sys", "user", temperature=0.7, max_tokens=512)
+
+    mock_sampler.assert_called_with(temp=0.7)
+    mock_generate.assert_called_once_with(
+        mock_model,
+        mock_tokenizer,
+        prompt="formatted",
+        max_tokens=512,
+        sampler="sampler_obj",
+    )
+
+
+@patch("src.extraction.llm.mlx_lm_generate")
+@patch("src.extraction.llm.make_sampler")
+@patch("src.extraction.llm.mlx_lm_load")
+def test_generate_text_with_json_schema(mock_load, mock_sampler, mock_generate):
     """When json_schema is given, schema is appended to system prompt and fences are stripped."""
     schema = {"type": "object"}
     raw_json = '{"key": "value"}'
     fenced = f"```json\n{raw_json}\n```"
 
-    with patch("src.extraction.llm.chat") as mock_chat:
-        mock_chat.return_value = _make_ollama_response(fenced)
-        backend = OllamaBackend()
-        result = backend.generate_text(
-            system_prompt="sys",
-            user_prompt="user",
-            temperature=0.0,
-            max_tokens=50,
-            json_schema=schema,
-        )
+    mock_model = MagicMock()
+    mock_tokenizer = MagicMock()
+    mock_load.return_value = (mock_model, mock_tokenizer)
+    mock_tokenizer.apply_chat_template.return_value = "formatted"
+    mock_generate.return_value = fenced
+
+    backend = MLXBackend()
+    result = backend.generate_text("sys", "user", temperature=0.0, max_tokens=50, json_schema=schema)
 
     assert result == raw_json
 
-    # The system message content should contain the schema
-    sent_messages = mock_chat.call_args.kwargs["messages"]
-    system_content = sent_messages[0]["content"]
+    # System message should contain the JSON schema
+    messages = mock_tokenizer.apply_chat_template.call_args[0][0]
+    system_content = messages[0]["content"]
     assert json.dumps(schema) in system_content
     assert "JSON" in system_content
 
 
+@patch("src.extraction.llm.mlx_lm_generate")
+@patch("src.extraction.llm.make_sampler")
+@patch("src.extraction.llm.mlx_lm_load")
+def test_generate_text_reuses_loaded_model(mock_load, mock_sampler, mock_generate):
+    """Text model is loaded only once across multiple generate_text calls."""
+    mock_model = MagicMock()
+    mock_tokenizer = MagicMock()
+    mock_load.return_value = (mock_model, mock_tokenizer)
+    mock_tokenizer.apply_chat_template.return_value = "formatted"
+    mock_generate.return_value = "result"
+
+    backend = MLXBackend()
+    backend.generate_text("sys", "user", temperature=0.0, max_tokens=10)
+    backend.generate_text("sys", "user", temperature=0.0, max_tokens=10)
+
+    mock_load.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
-# OllamaBackend — generate_vision
+# MLXBackend — generate_vision
 # ---------------------------------------------------------------------------
 
 
-def test_ollama_generate_vision():
-    """PIL image is converted to PNG bytes and sent via the images param."""
+@patch("src.extraction.llm.mlx_vlm_generate")
+@patch("src.extraction.llm.mlx_vlm_apply_chat_template")
+@patch("src.extraction.llm.mlx_vlm_load_config")
+@patch("src.extraction.llm.mlx_vlm_load")
+def test_generate_vision_loads_model_lazily(mock_load, mock_config, mock_template, mock_generate):
+    """Vision model is loaded on first generate_vision call, not on construction."""
+    mock_model = MagicMock()
+    mock_processor = MagicMock()
+    mock_load.return_value = (mock_model, mock_processor)
+    mock_config.return_value = {}
+    mock_template.return_value = "formatted"
+    mock_generate.return_value = "1923"
+
+    backend = MLXBackend()
+    mock_load.assert_not_called()
+
     image = _make_pil_image()
-
-    with patch("src.extraction.llm.chat") as mock_chat:
-        mock_chat.return_value = _make_ollama_response("vision result")
-        backend = OllamaBackend()
-        result = backend.generate_vision(
-            prompt="describe",
-            image=image,
-            temperature=0.1,
-            max_tokens=200,
-        )
-
-    assert result == "vision result"
-    sent_messages = mock_chat.call_args.kwargs["messages"]
-    assert len(sent_messages) == 1
-    msg = sent_messages[0]
-    assert msg["role"] == "user"
-    assert msg["content"] == "describe"
-    assert "images" in msg
-    # Verify the bytes represent a valid PNG
-    img_bytes = msg["images"][0]
-    buf = io.BytesIO(img_bytes)
-    loaded = Image.open(buf)
-    assert loaded.format == "PNG"
+    backend.generate_vision("read this", image, temperature=0.0, max_tokens=16)
+    mock_load.assert_called_once_with(MLX_VISION_MODEL)
 
 
-# ---------------------------------------------------------------------------
-# GeminiBackend — generate_text
-# ---------------------------------------------------------------------------
+@patch("src.extraction.llm.mlx_vlm_generate")
+@patch("src.extraction.llm.mlx_vlm_apply_chat_template")
+@patch("src.extraction.llm.mlx_vlm_load_config")
+@patch("src.extraction.llm.mlx_vlm_load")
+def test_generate_vision_saves_image_and_passes_path(mock_load, mock_config, mock_template, mock_generate):
+    """PIL image is saved to a temp file and the path is passed to mlx_vlm.generate."""
+    mock_model = MagicMock()
+    mock_processor = MagicMock()
+    mock_load.return_value = (mock_model, mock_processor)
+    mock_config.return_value = {}
+    mock_template.return_value = "formatted"
+    mock_generate.return_value = "1923"
 
-
-def test_gemini_generate_text():
-    """generate_content is called with the expected arguments."""
-    mock_client = MagicMock()
-    mock_client.models.generate_content.return_value.text = "gemini answer"
-
-    backend = GeminiBackend(client=mock_client)
-    result = backend.generate_text(
-        system_prompt="sys",
-        user_prompt="user",
-        temperature=0.7,
-        max_tokens=256,
-    )
-
-    assert result == "gemini answer"
-    assert mock_client.models.generate_content.call_count == 1
-    call_kwargs = mock_client.models.generate_content.call_args.kwargs
-    assert call_kwargs["model"] == GEMINI_MODEL
-    assert call_kwargs["contents"] == "user"
-
-
-def test_gemini_generate_text_with_json_schema():
-    """response_json_schema is set on the config when json_schema is provided."""
-    from google.genai import types
-
-    schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-    mock_client = MagicMock()
-    mock_client.models.generate_content.return_value.text = '{"name": "test"}'
-
-    backend = GeminiBackend(client=mock_client)
-    result = backend.generate_text(
-        system_prompt="sys",
-        user_prompt="user",
-        temperature=0.0,
-        max_tokens=128,
-        json_schema=schema,
-    )
-
-    assert result == '{"name": "test"}'
-    call_kwargs = mock_client.models.generate_content.call_args.kwargs
-    config = call_kwargs["config"]
-    assert config.response_mime_type == "application/json"
-    assert config.response_json_schema == schema
-
-
-def test_gemini_generate_vision():
-    """PIL image is passed directly in contents alongside the prompt."""
+    backend = MLXBackend()
     image = _make_pil_image()
-    mock_client = MagicMock()
-    mock_client.models.generate_content.return_value.text = "vision text"
+    result = backend.generate_vision("read this", image, temperature=0.0, max_tokens=16)
 
-    backend = GeminiBackend(client=mock_client)
-    result = backend.generate_vision(
-        prompt="what is this",
-        image=image,
-        temperature=0.2,
-        max_tokens=64,
-    )
-
-    assert result == "vision text"
-    call_kwargs = mock_client.models.generate_content.call_args.kwargs
-    contents = call_kwargs["contents"]
-    assert contents[0] == "what is this"
-    assert contents[1] is image
+    assert result == "1923"
+    mock_generate.assert_called_once()
+    call_kwargs = mock_generate.call_args
+    # image argument should be a list with one string path
+    image_arg = call_kwargs[1].get("image") or call_kwargs[0][3]
+    assert isinstance(image_arg, list)
+    assert len(image_arg) == 1
+    assert isinstance(image_arg[0], str)
 
 
-# ---------------------------------------------------------------------------
-# GeminiBackend — retry logic
-# ---------------------------------------------------------------------------
+@patch("src.extraction.llm.mlx_vlm_generate")
+@patch("src.extraction.llm.mlx_vlm_apply_chat_template")
+@patch("src.extraction.llm.mlx_vlm_load_config")
+@patch("src.extraction.llm.mlx_vlm_load")
+def test_generate_vision_reuses_loaded_model(mock_load, mock_config, mock_template, mock_generate):
+    """Vision model is loaded only once across multiple generate_vision calls."""
+    mock_model = MagicMock()
+    mock_processor = MagicMock()
+    mock_load.return_value = (mock_model, mock_processor)
+    mock_config.return_value = {}
+    mock_template.return_value = "formatted"
+    mock_generate.return_value = "1923"
 
+    backend = MLXBackend()
+    image = _make_pil_image()
+    backend.generate_vision("read", image, temperature=0.0, max_tokens=16)
+    backend.generate_vision("read", image, temperature=0.0, max_tokens=16)
 
-def test_gemini_retries_on_429():
-    """A 429 ClientError triggers exactly one retry after a 60s sleep."""
-    from google.genai.errors import ClientError
-
-    mock_client = MagicMock()
-    error = ClientError.__new__(ClientError)
-    error.code = 429
-    error.message = "rate limited"
-    mock_client.models.generate_content.side_effect = [
-        error,
-        MagicMock(text="ok"),
-    ]
-
-    with patch("src.extraction.llm.time.sleep") as mock_sleep:
-        backend = GeminiBackend(client=mock_client)
-        result = backend.generate_text(
-            system_prompt="s",
-            user_prompt="u",
-            temperature=0.0,
-            max_tokens=10,
-        )
-
-    assert result == "ok"
-    assert mock_client.models.generate_content.call_count == 2
-    mock_sleep.assert_called_once_with(60)
-
-
-def test_gemini_raises_non_429_immediately():
-    """Non-429 ClientErrors are raised on the first attempt without retrying."""
-    from google.genai.errors import ClientError
-
-    mock_client = MagicMock()
-    error = ClientError.__new__(ClientError)
-    error.code = 400
-    error.message = "bad request"
-    mock_client.models.generate_content.side_effect = error
-
-    with patch("src.extraction.llm.time.sleep") as mock_sleep:
-        backend = GeminiBackend(client=mock_client)
-        with pytest.raises(ClientError):
-            backend.generate_text(
-                system_prompt="s",
-                user_prompt="u",
-                temperature=0.0,
-                max_tokens=10,
-            )
-
-    assert mock_client.models.generate_content.call_count == 1
-    mock_sleep.assert_not_called()
+    mock_load.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -255,38 +222,41 @@ def test_gemini_raises_non_429_immediately():
 # ---------------------------------------------------------------------------
 
 
-def test_make_backend_defaults_to_ollama(tmp_path):
-    """When no config file exists, OllamaBackend with the default model is returned."""
+def test_make_backend_defaults_to_mlx(tmp_path):
+    """When no config file exists, MLXBackend with default models is returned."""
     config_path = tmp_path / "config.json"
     backend = make_backend(config_path)
-    assert isinstance(backend, OllamaBackend)
-    assert backend._model == OLLAMA_MODEL
+    assert isinstance(backend, MLXBackend)
+    assert backend._text_model_name == MLX_TEXT_MODEL
+    assert backend._vision_model_name == MLX_VISION_MODEL
 
 
-def test_make_backend_creates_gemini(tmp_path):
-    """A config with backend=gemini returns a GeminiBackend."""
+def test_make_backend_with_custom_models(tmp_path):
+    """Config file can override model names."""
     config_path = tmp_path / "config.json"
-    config_path.write_text(
-        json.dumps({"backend": "gemini", "gemini_api_key": "fake-key"})
-    )
-
-    with patch("src.extraction.llm.genai.Client") as mock_client_cls:
-        mock_client_cls.return_value = MagicMock()
-        backend = make_backend(config_path)
-
-    assert isinstance(backend, GeminiBackend)
-    mock_client_cls.assert_called_once_with(api_key="fake-key")
-
-
-def test_make_backend_creates_ollama_with_custom_model(tmp_path):
-    """A config with ollama_model creates OllamaBackend with that model."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"backend": "ollama", "ollama_model": "llama3:8b"}))
+    config_path.write_text(json.dumps({
+        "mlx_text_model": "mlx-community/custom-text",
+        "mlx_vision_model": "mlx-community/custom-vision",
+    }))
 
     backend = make_backend(config_path)
 
-    assert isinstance(backend, OllamaBackend)
-    assert backend._model == "llama3:8b"
+    assert isinstance(backend, MLXBackend)
+    assert backend._text_model_name == "mlx-community/custom-text"
+    assert backend._vision_model_name == "mlx-community/custom-vision"
+
+
+def test_make_backend_partial_config(tmp_path):
+    """Config with only one model override uses defaults for the other."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({
+        "mlx_text_model": "mlx-community/custom-text",
+    }))
+
+    backend = make_backend(config_path)
+
+    assert backend._text_model_name == "mlx-community/custom-text"
+    assert backend._vision_model_name == MLX_VISION_MODEL
 
 
 # ---------------------------------------------------------------------------
