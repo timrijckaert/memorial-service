@@ -39,7 +39,7 @@ No backwards compatibility handling — cards without `locality` simply won't ha
 - Add a `<select id="f-locality">` dropdown with four options (Haaltert, Kerksken, Denderhoutem, Terjoden).
 - Placed in the form between the death_place and age_at_death fields.
 - On card load, set the dropdown to `person.locality`.
-- Changing `birth_place` or `death_place` re-derives the locality dropdown value, but the user can override by selecting manually.
+- Changing `birth_place` or `death_place` always re-derives and updates the locality dropdown value. The user can then override by selecting manually afterwards.
 - `computeDerivedName()` uses the locality dropdown value instead of `birth_place`.
 - `approveCard()` includes `locality` in the saved payload.
 
