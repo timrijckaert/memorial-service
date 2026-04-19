@@ -578,6 +578,7 @@ async function loadReviewCard(index) {
   document.getElementById('f-birth_place').value = p.birth_place || '';
   document.getElementById('f-death_date').value = p.death_date || '';
   document.getElementById('f-death_place').value = p.death_place || '';
+  document.getElementById('f-locality').value = p.locality || 'Haaltert';
   document.getElementById('f-age_at_death').value = p.age_at_death != null ? p.age_at_death : '';
 
   document.getElementById('spouses-list').innerHTML = '';
@@ -598,12 +599,23 @@ async function loadReviewCard(index) {
   btn.classList.add('btn-primary');
 
   // Reset dirty tracking on all form fields
-  ['f-first_name', 'f-last_name', 'f-birth_place', 'f-death_place'].forEach(function(id) {
+  ['f-first_name', 'f-last_name'].forEach(function(id) {
     document.getElementById(id).oninput = function() {
       markFormDirty();
       computeDerivedName();
     };
   });
+  ['f-birth_place', 'f-death_place'].forEach(function(id) {
+    document.getElementById(id).oninput = function() {
+      markFormDirty();
+      deriveLocality();
+      computeDerivedName();
+    };
+  });
+  document.getElementById('f-locality').onchange = function() {
+    markFormDirty();
+    computeDerivedName();
+  };
   ['f-birth_date', 'f-death_date'].forEach(function(id) {
     document.getElementById(id).oninput = function() {
       computeAge();
@@ -673,6 +685,7 @@ async function approveCard() {
       birth_place: document.getElementById('f-birth_place').value.trim() || null,
       death_date: document.getElementById('f-death_date').value.trim() || null,
       death_place: document.getElementById('f-death_place').value.trim() || null,
+      locality: document.getElementById('f-locality').value,
       age_at_death: ageRaw ? parseInt(ageRaw, 10) : null,
       spouses: getSpousesFromForm(),
     },
@@ -692,6 +705,29 @@ async function approveCard() {
   btn.classList.add('btn-success');
 }
 
+function deriveLocality() {
+  var knownLocalities = ['Haaltert', 'Kerksken', 'Denderhoutem', 'Terjoden'];
+  var deathPlace = document.getElementById('f-death_place').value.trim().toLowerCase();
+  var birthPlace = document.getElementById('f-birth_place').value.trim().toLowerCase();
+
+  function findLocality(place) {
+    if (!place) return null;
+    var bestMatch = null;
+    var bestPos = place.length;
+    for (var i = 0; i < knownLocalities.length; i++) {
+      var pos = place.indexOf(knownLocalities[i].toLowerCase());
+      if (pos !== -1 && pos < bestPos) {
+        bestPos = pos;
+        bestMatch = knownLocalities[i];
+      }
+    }
+    return bestMatch;
+  }
+
+  var result = findLocality(deathPlace) || findLocality(birthPlace) || 'Haaltert';
+  document.getElementById('f-locality').value = result;
+}
+
 function computeDerivedName() {
   var months = {
     '01': 'januari', '02': 'februari', '03': 'maart', '04': 'april',
@@ -701,12 +737,12 @@ function computeDerivedName() {
   var parts = [];
   var lastName = document.getElementById('f-last_name').value.trim();
   var firstName = document.getElementById('f-first_name').value.trim();
-  var birthPlace = document.getElementById('f-birth_place').value.trim();
+  var locality = document.getElementById('f-locality').value;
   var deathDate = document.getElementById('f-death_date').value.trim();
 
   if (lastName) parts.push(lastName);
   if (firstName) parts.push(firstName);
-  if (birthPlace) parts.push(birthPlace);
+  if (locality) parts.push(locality);
   parts.push('bidprentje');
 
   if (deathDate && deathDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
