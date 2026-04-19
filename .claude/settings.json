@@ -3,7 +3,12 @@
     "PostToolUse": [
       {
         "matcher": "Bash|Write|Edit",
-        "command": ".venv/bin/python docs/ai/rebuild.py --quiet"
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/bin/python docs/ai/rebuild.py --quiet"
+          }
+        ]
       }
     ]
   }
