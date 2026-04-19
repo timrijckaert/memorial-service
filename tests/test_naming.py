@@ -24,19 +24,19 @@ def test_derive_filename_all_fields():
         "person": {
             "first_name": "Dominicus",
             "last_name": "Meganck",
-            "birth_place": "Kerksken",
+            "locality": "Kerksken",
             "death_date": "1913-12-21",
         }
     }
     assert derive_filename(card) == "Meganck Dominicus Kerksken bidprentje 21 december 1913"
 
 
-def test_derive_filename_no_birth_place():
+def test_derive_filename_no_locality():
     card = {
         "person": {
             "first_name": "Dominicus",
             "last_name": "Meganck",
-            "birth_place": None,
+            "locality": None,
             "death_date": "1913-12-21",
         }
     }
@@ -48,7 +48,7 @@ def test_derive_filename_no_death_date():
         "person": {
             "first_name": "Dominicus",
             "last_name": "Meganck",
-            "birth_place": "Kerksken",
+            "locality": "Kerksken",
             "death_date": None,
         }
     }
@@ -60,7 +60,7 @@ def test_derive_filename_only_last_name():
         "person": {
             "first_name": None,
             "last_name": "Meganck",
-            "birth_place": None,
+            "locality": None,
             "death_date": None,
         }
     }

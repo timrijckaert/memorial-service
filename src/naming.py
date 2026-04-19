@@ -17,7 +17,7 @@ def format_dutch_date(iso_date: str) -> str:
 def derive_filename(card: dict) -> str:
     """Build a canonical filename from card data.
 
-    Convention: Surname Firstname Birthplace bidprentje DD month YYYY
+    Convention: Surname Firstname Locality bidprentje DD month YYYY
     Missing fields are omitted. Always includes 'bidprentje'.
     """
     person = card.get("person", {})
@@ -27,8 +27,8 @@ def derive_filename(card: dict) -> str:
         parts.append(person["last_name"])
     if person.get("first_name"):
         parts.append(person["first_name"])
-    if person.get("birth_place"):
-        parts.append(person["birth_place"])
+    if person.get("locality"):
+        parts.append(person["locality"])
 
     parts.append("bidprentje")
 
