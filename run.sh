@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 
+# Store MLX models inside the project (portable — copy the whole folder to another Mac)
+export HF_HUB_CACHE="$SCRIPT_DIR/models"
+
 # Check Python 3 is available
 if ! command -v python3 &>/dev/null; then
     echo "Error: python3 is required but not found."
@@ -52,4 +55,5 @@ print('  Vision model ready.')
 echo ""
 
 # Run the pipeline
-"$VENV_DIR/bin/python" "$SCRIPT_DIR/src/main.py" "$@"
+cd "$SCRIPT_DIR"
+"$VENV_DIR/bin/python" -m src.main "$@"
