@@ -65,3 +65,20 @@ def test_default_when_person_empty():
 def test_default_when_no_person_key():
     card = {}
     assert derive_locality(card) == "Haaltert"
+
+
+def test_derive_locality_sets_on_card_dict():
+    """Verify derive_locality works when called on a full card structure
+    matching how interpret_text builds the 'existing' dict."""
+    existing = {
+        "person": {
+            "first_name": "Jan",
+            "last_name": "Peeters",
+            "birth_place": "Gent",
+            "death_place": "Kerksken",
+        },
+        "notes": [],
+        "source": {},
+    }
+    existing["person"]["locality"] = derive_locality(existing)
+    assert existing["person"]["locality"] == "Kerksken"

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.extraction.llm import LLMBackend
 from src.extraction.schema import PERSON_SCHEMA
+from src.locality import derive_locality
 
 
 def interpret_text(
@@ -53,6 +54,9 @@ def interpret_text(
         person["spouses"] = [
             s.title() if isinstance(s, str) else s for s in person["spouses"]
         ]
+
+    # Derive locality for filename
+    person["locality"] = derive_locality(result)
 
     # Read existing file (skeleton from match phase) if present
     existing = {}
