@@ -62,6 +62,7 @@ def interpret_transcription(
         existing_source["front_image_file"] = front_image_file
     if back_image_file is not None:
         existing_source["back_image_file"] = back_image_file
+    existing_source["transcription"] = transcription
     existing["source"] = existing_source
 
     output_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False))

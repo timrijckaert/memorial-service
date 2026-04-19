@@ -118,16 +118,22 @@ class ExtractionWorker:
                 self._status.in_flight = [CardProgress(card_id, "vision_read")]
 
             try:
-                images = [Image.open(front_path)]
-                if back_path:
-                    images.append(Image.open(back_path))
-
-                transcription = backend.generate_vision(
+                front_text = backend.generate_vision(
                     prompt=vision_prompt,
-                    images=images,
+                    images=[Image.open(front_path)],
                     temperature=0,
-                    max_tokens=2048,
+                    max_tokens=512,
                 )
+                parts = ["--- FRONT ---", front_text]
+                if back_path:
+                    back_text = backend.generate_vision(
+                        prompt=vision_prompt,
+                        images=[Image.open(back_path)],
+                        temperature=0,
+                        max_tokens=512,
+                    )
+                    parts.extend(["--- BACK ---", back_text])
+                transcription = "\n".join(parts)
             except Exception as e:
                 with self._lock:
                     self._status.in_flight = []

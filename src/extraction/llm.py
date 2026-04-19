@@ -168,6 +168,8 @@ class MLXBackend:
                 image=image_paths,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                repetition_penalty=1.2,
+                repetition_context_size=64,
             )
             return result.text
         finally:

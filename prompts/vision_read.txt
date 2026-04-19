@@ -9,16 +9,16 @@ Belgian memorial cards typically follow this structure:
 - IGNORE all religious text: prayers, "Bid voor de ziel van", indulgence references (e.g. "100 d. afl."), saint invocations, Bible verses, and any other devotional content. Only extract biographical facts.
 
 YOUR TASK:
-Read the memorial card images and transcribe ALL biographical information you find. Report exactly what you see, preserving the original spellings (even archaic or regional Dutch). Include:
-- Full name of the deceased
-- Birth date and place
-- Death date and place
-- Age at death (if explicitly stated)
-- Spouse name(s) and the keywords used (echtgenoot/echtgenote/weduwnaar/weduwe)
-- Parent references (zoon van / dochter van) — include so the structuring model can distinguish them from spouses
-- Any other biographical details
+Read ONLY the printed text visible on this card. Transcribe it exactly as written.
 
-Output plain text only. Do not structure as JSON. Do not interpret or correct — just faithfully report what the card says.
+CRITICAL RULES:
+- ONLY transcribe text you can actually SEE printed on the card. Do NOT invent, guess, or infer any text.
+- If the card shows only a religious image or decorative border with no text, respond with: "No text found."
+- Do NOT describe images, illustrations, or decorations — only read printed/handwritten text.
+- Do NOT make up names, dates, or places. If you cannot read a word clearly, write [unclear].
+- Preserve the original spellings exactly (even archaic or regional Dutch).
+
+Output plain text only. Do not structure as JSON.
 
 KNOWN PLACES (Arrondissement Aalst, Oost-Vlaanderen, Belgium):
 - Haaltert

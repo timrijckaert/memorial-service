@@ -356,21 +356,38 @@ function closeFindMatch() {
 let extractPollInterval = null;
 
 async function loadExtractCards() {
-  const resp = await fetch('/api/extract/cards');
-  const data = await resp.json();
+  const [cardsResp, statusResp] = await Promise.all([
+    fetch('/api/extract/cards'),
+    fetch('/api/extract/status'),
+  ]);
+  const data = await cardsResp.json();
+  const status = await statusResp.json();
+
   const countEl = document.getElementById('extract-count');
   const pending = data.cards.filter(c => c.status === 'pending').length;
   const done = data.cards.filter(c => c.status === 'done').length;
   countEl.textContent = data.cards.length + ' card' + (data.cards.length !== 1 ? 's' : '') + ' (' + done + ' done, ' + pending + ' pending)';
 
-  renderExtractList(data.cards.map(c => ({ ...c, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : '' })));
-  updateExtractBtn();
-
-  // Check if already running
-  const statusResp = await fetch('/api/extract/status');
-  const status = await statusResp.json();
   if (status.status === 'running' || status.status === 'cancelling') {
+    // Merge worker status into card list immediately — no flash of "pending"
+    var workerMap = {};
+    status.done.forEach(function(name) { workerMap[name] = { icon: 'done', statusText: 'Done' }; });
+    status.in_flight.forEach(function(card) {
+      workerMap[card.card_id] = { icon: 'progress', statusText: card.stage.replace(/_/g, ' ') };
+    });
+    status.errors.forEach(function(e) { workerMap[e.card_id] = { icon: 'error', statusText: e.reason }; });
+    status.queue.forEach(function(name) { workerMap[name] = { icon: 'queued', statusText: 'Queued' }; });
+
+    var merged = data.cards.map(function(c) {
+      var w = workerMap[c.card_id];
+      if (w) return { card_id: c.card_id, derived_name: c.derived_name, front: c.front, back: c.back, icon: w.icon, statusText: w.statusText, status: w.icon };
+      return { card_id: c.card_id, derived_name: c.derived_name, front: c.front, back: c.back, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : c.status, status: c.status };
+    });
+    renderExtractList(merged);
     startExtractPolling();
+  } else {
+    renderExtractList(data.cards.map(c => ({ ...c, icon: c.status === 'done' ? 'done' : 'queued', statusText: c.status === 'done' ? 'Done' : '' })));
+    updateExtractBtn();
   }
 }
 
@@ -398,7 +415,7 @@ function renderExtractList(cards) {
       checkbox +
       '<span class="icon ' + c.icon + '">' + (iconMap[c.icon] || '') + '</span>' +
       '<span class="name">' + displayName + '</span>' +
-      (c.icon !== 'queued' ? '<span class="status-text">' + (c.statusText || c.status || '') + '</span>' : '');
+      (c.statusText ? '<span class="status-text">' + c.statusText + '</span>' : '');
 
     list.appendChild(item);
   });
@@ -584,6 +601,9 @@ async function loadReviewCard(index) {
   document.getElementById('spouses-list').innerHTML = '';
   (p.spouses || []).forEach(name => addSpouseInput(name));
   if (!p.spouses || p.spouses.length === 0) addSpouseInput('');
+
+  const transcription = (reviewCurrentCard.data.source || {}).transcription || '';
+  document.getElementById('transcription-text').textContent = transcription;
 
   const notesList = document.getElementById('notes-list');
   notesList.innerHTML = '';
