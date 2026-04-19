@@ -31,8 +31,9 @@ if [ ! -f "$TESSDATA_DIR/nld.traineddata" ]; then
     echo ""
 fi
 
-# Create venv if it doesn't exist
-if [ ! -d "$VENV_DIR" ]; then
+# Create venv if it doesn't exist or is from another machine
+if [ ! -d "$VENV_DIR" ] || ! "$VENV_DIR/bin/python" --version &>/dev/null; then
+    rm -rf "$VENV_DIR"
     echo "Setting up virtual environment..."
     python3 -m venv "$VENV_DIR"
     "$VENV_DIR/bin/pip" install --quiet -r "$SCRIPT_DIR/requirements.txt"
